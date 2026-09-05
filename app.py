@@ -24,7 +24,7 @@ DEFAULT_MATCH_DATA = {
     'team_a': 'ทีม A',
     'team_b': 'ทีม B',
     'scores': [{'a': 0, 'b': 0}, {'a': 0, 'b': 0}, {'a': 0, 'b': 0}],
-    'timeouts_a': [0, 0, 0], # 🟢 จำกัดเวลานอกเซตละ 2 ครั้ง
+    'timeouts_a': [0, 0, 0],
     'timeouts_b': [0, 0, 0],
     'current_set': 0,
     'swapped_sides': False,
@@ -42,7 +42,7 @@ DEFAULT_MATCH_DATA = {
     'players_b_list': ['ตัวจริง B1', 'ตัวจริง B2', 'ตัวจริง B3', 'ตัวจริง B4', 'ตัวจริง B5', 'ตัวจริง B6'],
     'bench_a': ['สำรอง A1', 'สำรอง A2', 'สำรอง A3', 'สำรอง A4', 'สำรอง A5'],
     'bench_b': ['สำรอง B1', 'สำรอง B2', 'สำรอง B3', 'สำรอง B4', 'สำรอง B5'],
-    'match_archives': [], # 🟢 คลังเก็บประวัติการแข่งขันที่จบแล้ว
+    'match_archives': [],
     'ui_key': 0
 }
 
@@ -185,7 +185,6 @@ def add_score(team):
     sa = m['scores'][curr_set]['a']
     sb = m['scores'][curr_set]['b']
     
-    # 🟢 จบเซตและสลับฝั่งอัตโนมัติ
     if check_set_winner(sa, sb, curr_target):
         new_sets_a, new_sets_b = calculate_sets_won()
         if new_sets_a < 2 and new_sets_b < 2 and curr_set < 2:
@@ -326,9 +325,9 @@ with st.sidebar:
         update_and_sync()
         st.success("บันทึกสำเร็จ!")
 
-# 🟢 ระบบ TABS แยกหน้าจอไม่ให้รก
 tab_ctrl, tab_history, tab_archive = st.tabs(["🎮 ควบคุมการแข่ง", "📝 แก้ไขประวัติเซต", "🗄️ คลังประวัติการแข่งขัน"])
 
+# 🟢 TAB 1: ควบคุมการแข่ง
 with tab_ctrl:
     st.markdown(f"### 📌 คู่ที่ {m['match_no']} | **กำลังแข่ง: เซตที่ {m['current_set'] + 1}** (เป้าหมาย {m['target_score_reg'] if m['current_set'] < 2 else m['target_score_tie']} แต้ม)")
 
@@ -454,7 +453,6 @@ with tab_ctrl:
             update_and_sync()
             st.rerun()
 
-    # ⏱️ ถอยหลังเวลานอก
     if m.get('timeout_active', False):
         rem_timeout = int(m['timeout_end_time'] - time.time())
         if rem_timeout <= 0:
@@ -519,6 +517,43 @@ with tab_ctrl:
                     substitute_player('b', int(sel_b_out.split(":")[0])-1, int(sel_b_in.split(":")[0])-1)
                     st.rerun()
 
+    # 🟢 ย้ายปุ่มจบการแข่งขันมาไว้ล่างสุดของหน้าควบคุม
+    st.markdown("---")
+    st.subheader("🏁 จัดการหลังจบการแข่งขัน")
+    
+    sets_a, sets_b = calculate_sets_won()
+    if sets_a >= 2 or sets_b >= 2:
+        winner_name = m['team_a'] if sets_a >= 2 else m['team_b']
+        st.success(f"🎉 แมตช์นี้จบแล้ว! ผู้ชนะคือ **{winner_name}** ({sets_a} - {sets_b} เซต)")
+        button_type = "primary"
+    else:
+        st.info("แมตช์ยังไม่จบ (ต้องชนะ 2 ใน 3 เซต)")
+        button_type = "secondary"
+
+    if st.button("🏁 จบการแข่งขันคู่นี้และบันทึกลงคลัง", type=button_type, use_container_width=True):
+        match_record = {
+            'id': time.time(),
+            'match_no': m['match_no'],
+            'round_name': m['round_name'],
+            'group_name': m['group_name'],
+            'team_a': m['team_a'],
+            'team_b': m['team_b'],
+            'scores': copy.deepcopy(m['scores'])
+        }
+        m['match_archives'].insert(0, match_record)
+        
+        # Reset data สำหรับคู่ถัดไป
+        m['scores'] = [{'a': 0, 'b': 0}, {'a': 0, 'b': 0}, {'a': 0, 'b': 0}]
+        m['current_set'] = 0
+        m['timeouts_a'] = [0, 0, 0]
+        m['timeouts_b'] = [0, 0, 0]
+        m['match_started'] = False
+        m['match_paused'] = False
+        m['accumulated_time'] = 0
+        update_and_sync()
+        st.success("บันทึกแมตช์ลงคลังและรีเซ็ตบอร์ดเรียบร้อย!")
+        st.rerun()
+
 # 🟢 TAB 2: แก้ไขประวัติเซต
 with tab_history:
     st.markdown("### 📝 แก้ไขคะแนนแต่ละเซต (Manual Override)")
@@ -545,28 +580,6 @@ with tab_history:
 with tab_archive:
     st.markdown("### 🗄️ คลังประวัติการแข่งขันที่จบแล้ว")
     
-    if st.button("🏁 จบการแข่งขันคู่นี้และบันทึกลงคลัง", type="primary", use_container_width=True):
-        match_record = {
-            'id': time.time(),
-            'match_no': m['match_no'],
-            'round_name': m['round_name'],
-            'group_name': m['group_name'],
-            'team_a': m['team_a'],
-            'team_b': m['team_b'],
-            'scores': copy.deepcopy(m['scores'])
-        }
-        m['match_archives'].insert(0, match_record)
-        
-        # Reset current match data
-        m['scores'] = [{'a': 0, 'b': 0}, {'a': 0, 'b': 0}, {'a': 0, 'b': 0}]
-        m['current_set'] = 0
-        m['timeouts_a'] = [0, 0, 0]
-        m['timeouts_b'] = [0, 0, 0]
-        m['match_started'] = False
-        update_and_sync()
-        st.success("บันทึกแมตช์ลงคลังและรีเซ็ตบอร์ดเรียบร้อย!")
-        st.rerun()
-
     if m['match_archives']:
         for idx, arc in enumerate(m['match_archives']):
             with st.expander(f"คู่ที่ {arc['match_no']}: {arc['team_a']} VS {arc['team_b']} ({arc['round_name']})"):
