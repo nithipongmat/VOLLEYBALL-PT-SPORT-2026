@@ -68,6 +68,17 @@ is_scoreboard = query_params.get("view") == "scoreboard"
 def update_and_sync():
     save_shared_state(st.session_state.match_data)
 
+# 🟢 เพิ่มการซิงก์ Session State เพื่อป้องกัน Sidebar นำค่าเก่ามาทับข้อมูลที่หมุนแล้ว
+def sync_ui_state():
+    m = st.session_state.match_data
+    for i in range(6):
+        if f"inp_main_a_{i}" in st.session_state: st.session_state[f"inp_main_a_{i}"] = m['players_a_list'][i]
+        if f"inp_main_b_{i}" in st.session_state: st.session_state[f"inp_main_b_{i}"] = m['players_b_list'][i]
+    for i in range(len(m['bench_a'])):
+        if f"inp_bench_a_{i}" in st.session_state: st.session_state[f"inp_bench_a_{i}"] = m['bench_a'][i]
+    for i in range(len(m['bench_b'])):
+        if f"inp_bench_b_{i}" in st.session_state: st.session_state[f"inp_bench_b_{i}"] = m['bench_b'][i]
+
 def save_snapshot(action_text=""):
     m = st.session_state.match_data
     snapshot = {
@@ -103,6 +114,7 @@ def undo_last_action():
         m['bench_a'] = last_state.get('bench_a', m['bench_a'])
         m['bench_b'] = last_state.get('bench_b', m['bench_b'])
         if m['logs']: m['logs'].pop(0)
+        sync_ui_state()  # 🟢 ซิงก์ค่าหน้าจอ
         update_and_sync()
 
 def check_set_winner(sa, sb, target):
@@ -120,32 +132,32 @@ def calculate_sets_won():
         elif winner == 'b': sets_b += 1
     return sets_a, sets_b
 
-# 🏐 แก้ไขระบบหมุนตามเข็มนาฬิกาที่ถูกต้อง: 2 -> 1, 1 -> 6, 6 -> 5, 5 -> 4, 4 -> 3, 3 -> 2
 def rotate_team_cw(team_key):
     m = st.session_state.match_data
     target_list = m['players_a_list'] if team_key == 'a' else m['players_b_list']
     # เลื่อนคนแรก (ตำแหน่ง 1) ไปไว้ท้ายสุด เพื่อให้คนที่ 2 (ตำแหน่ง 2) ขึ้นมาเป็นตำแหน่ง 1
     first_player = target_list.pop(0)
     target_list.append(first_player)
+    sync_ui_state()  # 🟢 อัปเดตฝั่ง UI ให้หมุนตาม
 
 def reset_positions():
     m = st.session_state.match_data
     save_snapshot("รีเซ็ตตำแหน่งสนามเป็นค่าเริ่มต้น")
     m['players_a_list'] = [f"ตัวจริง A{i+1}" for i in range(6)]
     m['players_b_list'] = [f"ตัวจริง B{i+1}" for i in range(6)]
+    sync_ui_state()  # 🟢 ซิงก์ค่าหน้าจอ
     update_and_sync()
 
-# 🎯 Mapping ตรงตามตำแหน่ง 1, 2, 3, 4, 5, 6
 def get_current_court(team_key):
     m = st.session_state.match_data
     plist = m['players_a_list'] if team_key == 'a' else m['players_b_list']
     return {
-        '1': plist[0],  # ตำแหน่ง 1 (คนเสิร์ฟ)
-        '2': plist[1],  # ตำแหน่ง 2 (หน้าขวา)
-        '3': plist[2],  # ตำแหน่ง 3 (หน้ากลาง)
-        '4': plist[3],  # ตำแหน่ง 4 (หน้าซ้าย)
-        '5': plist[4],  # ตำแหน่ง 5 (หลังซ้าย)
-        '6': plist[5]   # ตำแหน่ง 6 (หลังกลาง)
+        '1': plist[0],
+        '2': plist[1],
+        '3': plist[2],
+        '4': plist[3],
+        '5': plist[4],
+        '6': plist[5]
     }
 
 def substitute_player(team_key, pos_idx, bench_idx):
@@ -160,6 +172,7 @@ def substitute_player(team_key, pos_idx, bench_idx):
     plist[pos_idx] = in_player
     blist[bench_idx] = out_player
 
+    sync_ui_state()  # 🟢 ซิงก์ค่าหน้าจอหลังจากสลับตัว
     save_snapshot(f"{team_name} เปลี่ยนตัว: {in_player} (เข้า) แทน {out_player} (ออก)")
     update_and_sync()
 
@@ -173,7 +186,6 @@ def add_score(team):
     curr_set = m['current_set']
     team_name = m['team_a'] if team == 'a' else m['team_b']
     
-    # เมื่อเปลี่ยนเสิร์ฟ: เปลี่ยนสิทธิ์เสิร์ฟ + หมุนตำแหน่งตามกติกา
     if m['server'] != team:
         m['server'] = team
         rotate_team_cw(team)
