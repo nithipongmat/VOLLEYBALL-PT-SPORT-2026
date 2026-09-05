@@ -34,7 +34,7 @@ DEFAULT_MATCH_DATA = {
     'timeout_active': False,
     'timeout_team_name': '',
     'timeout_end_time': 0,
-    'history': [],  # สำหรับระบบ Undo
+    'history': [],
     'players_a': {
         'court': {'1': 'ผู้เล่น A1', '2': 'ผู้เล่น A2', '3': 'ผู้เล่น A3', '4': 'ผู้เล่น A4', '5': 'ผู้เล่น A5', '6': 'ผู้เล่น A6'},
         'bench': ['สำรอง A1', 'สำรอง A2', 'สำรอง A3'],
@@ -81,7 +81,7 @@ def save_snapshot():
         'players_b_court': copy.deepcopy(m['players_b']['court'])
     }
     m['history'].append(snapshot)
-    if len(m['history']) > 30: # เก็บย้อนหลังได้สูงสุด 30 ก้าว
+    if len(m['history']) > 30:
         m['history'].pop(0)
 
 def undo_last_action():
@@ -131,7 +131,7 @@ elif sets_won_b >= 2: match_winner = st.session_state.match_data['team_b']
 
 def add_score(team):
     if match_winner: return
-    save_snapshot() # บันทึกประวัติก่อนปรับคะแนน/ตำแหน่ง
+    save_snapshot()
     curr_set = st.session_state.match_data['current_set']
     st.session_state.match_data['scores'][curr_set][team] += 1
     
@@ -220,7 +220,7 @@ if HAS_AUTOREFRESH: st_autorefresh(interval=1000, key="controller_tick")
 m = st.session_state.match_data
 st.title("🏐 PT SPORT 2026 CONTROLLER")
 
-# SIDEBAR: SETTINGS & PLAYER SETUP
+# SIDEBAR
 with st.sidebar:
     st.header("⚙️ ตั้งค่าการแข่งขัน")
     m['gender'] = st.radio("ประเภท", ["ชาย", "หญิง", "ผสม"], horizontal=True, index=["ชาย", "หญิง", "ผสม"].index(m['gender']))
@@ -248,7 +248,7 @@ with st.sidebar:
         update_and_sync()
         st.success("บันทึกข้อมูลเรียบร้อย!")
 
-# 🏆 สรุปผลการแข่งขันเมื่อจบแมตช์ (MATCH SUMMARY)
+# MATCH SUMMARY
 if match_winner:
     st.balloons()
     st.success(f"🎉 **การแข่งขันจบสิ้น! ทีมชนะเลิศคือ: {match_winner}** 🎉")
@@ -262,7 +262,7 @@ if match_winner:
                 ", ".join([f"SET {i+1}: {m['scores'][i]['a']}-{m['scores'][i]['b']}" for i in range(3) if m['scores'][i]['a'] > 0 or m['scores'][i]['b'] > 0]))
     st.markdown("---")
 
-# 📊 ดูผลการแข่งขันเซตที่ผ่านมา (PAST SETS SCORE)
+# PAST SETS
 with st.expander("📊 ดูผลการแข่งขันเซตที่ผ่านมา (Past Sets)", expanded=False):
     s_col1, s_col2, s_col3 = st.columns(3)
     for i, col in enumerate([s_col1, s_col2, s_col3]):
@@ -322,7 +322,7 @@ with start_col5:
 
 st.markdown("---")
 
-# SCORE & COURT CONTROLS
+# SCORE CONTROLS
 curr_set = m['current_set']
 is_swapped = m['swapped_sides']
 left_team, right_team = ('b', 'a') if is_swapped else ('a', 'b')
@@ -348,7 +348,35 @@ with col2:
             add_score(t_key)
             st.rerun()
 
-# FIELD DISPLAY & RESET ROTATION BUTTONS
+# TIME-OUT SECTION
+st.markdown("---")
+st.write("### ⏱️ ขอเวลานอก (Time-out)")
+if m.get('timeout_active', False):
+    rem_timeout = int(m['timeout_end_time'] - time.time())
+    if rem_timeout <= 0:
+        m['timeout_active'] = False
+        update_and_sync()
+    else:
+        st.warning(f"⏳ **กำลังขอเวลานอก:** {m['timeout_team_name']} — **เหลือเวลา {rem_timeout} วินาที**")
+
+to_col1, to_col2 = st.columns(2)
+with to_col1:
+    if st.button(f"⏱️ ขอเวลานอก {m[f'team_{left_team}']} (30 วินาที)", use_container_width=True):
+        m['timeout_active'] = True
+        m['timeout_team_name'] = m[f'team_{left_team}']
+        m['timeout_end_time'] = time.time() + 30
+        update_and_sync()
+        st.rerun()
+
+with to_col2:
+    if st.button(f"⏱️ ขอเวลานอก {m[f'team_{right_team}']} (30 วินาที)", use_container_width=True):
+        m['timeout_active'] = True
+        m['timeout_team_name'] = m[f'team_{right_team}']
+        m['timeout_end_time'] = time.time() + 30
+        update_and_sync()
+        st.rerun()
+
+# FIELD DISPLAY & SUBSTITUTION
 st.markdown("---")
 st.subheader("🏐 ผังสนามและการเปลี่ยนตัวนักกีฬา")
 
@@ -365,7 +393,7 @@ court_b, bench_b = m['players_b']['court'], m['players_b']['bench']
 
 field_col1, field_col2 = st.columns(2)
 
-# TEAM A COURT
+# TEAM A FIELD
 with field_col1:
     st.markdown(f"### {m['team_a']} {'🏐' if m['server'] == 'a' else ''}")
     r1_1, r1_2 = st.columns(2)
@@ -393,7 +421,7 @@ with field_col1:
         update_and_sync()
         st.rerun()
 
-# TEAM B COURT
+# TEAM B FIELD
 with field_col2:
     st.markdown(f"### {m['team_b']} {'🏐' if m['server'] == 'b' else ''}")
     r1_1, r1_2 = st.columns(2)
