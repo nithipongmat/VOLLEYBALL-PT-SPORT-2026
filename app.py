@@ -40,7 +40,8 @@ DEFAULT_MATCH_DATA = {
     'players_b_list': ['ตัวจริง B1', 'ตัวจริง B2', 'ตัวจริง B3', 'ตัวจริง B4', 'ตัวจริง B5', 'ตัวจริง B6'],
     'bench_a': ['สำรอง A1', 'สำรอง A2', 'สำรอง A3', 'สำรอง A4', 'สำรอง A5'],
     'bench_b': ['สำรอง B1', 'สำรอง B2', 'สำรอง B3', 'สำรอง B4', 'สำรอง B5'],
-    'archives': []
+    'archives': [],
+    'ui_key': 0  # 🟢 เพิ่มตัวแปรสำหรับรีเฟรช Sidebar โดยเฉพาะ
 }
 
 def load_shared_state():
@@ -67,17 +68,6 @@ is_scoreboard = query_params.get("view") == "scoreboard"
 
 def update_and_sync():
     save_shared_state(st.session_state.match_data)
-
-# 🟢 เพิ่มการซิงก์ Session State เพื่อป้องกัน Sidebar นำค่าเก่ามาทับข้อมูลที่หมุนแล้ว
-def sync_ui_state():
-    m = st.session_state.match_data
-    for i in range(6):
-        if f"inp_main_a_{i}" in st.session_state: st.session_state[f"inp_main_a_{i}"] = m['players_a_list'][i]
-        if f"inp_main_b_{i}" in st.session_state: st.session_state[f"inp_main_b_{i}"] = m['players_b_list'][i]
-    for i in range(len(m['bench_a'])):
-        if f"inp_bench_a_{i}" in st.session_state: st.session_state[f"inp_bench_a_{i}"] = m['bench_a'][i]
-    for i in range(len(m['bench_b'])):
-        if f"inp_bench_b_{i}" in st.session_state: st.session_state[f"inp_bench_b_{i}"] = m['bench_b'][i]
 
 def save_snapshot(action_text=""):
     m = st.session_state.match_data
@@ -114,7 +104,7 @@ def undo_last_action():
         m['bench_a'] = last_state.get('bench_a', m['bench_a'])
         m['bench_b'] = last_state.get('bench_b', m['bench_b'])
         if m['logs']: m['logs'].pop(0)
-        sync_ui_state()  # 🟢 ซิงก์ค่าหน้าจอ
+        m['ui_key'] = m.get('ui_key', 0) + 1  # 🟢 กระตุ้นให้ Sidebar อัปเดต
         update_and_sync()
 
 def check_set_winner(sa, sb, target):
@@ -135,17 +125,16 @@ def calculate_sets_won():
 def rotate_team_cw(team_key):
     m = st.session_state.match_data
     target_list = m['players_a_list'] if team_key == 'a' else m['players_b_list']
-    # เลื่อนคนแรก (ตำแหน่ง 1) ไปไว้ท้ายสุด เพื่อให้คนที่ 2 (ตำแหน่ง 2) ขึ้นมาเป็นตำแหน่ง 1
     first_player = target_list.pop(0)
     target_list.append(first_player)
-    sync_ui_state()  # 🟢 อัปเดตฝั่ง UI ให้หมุนตาม
+    m['ui_key'] = m.get('ui_key', 0) + 1  # 🟢 กระตุ้นให้ Sidebar อัปเดต
 
 def reset_positions():
     m = st.session_state.match_data
     save_snapshot("รีเซ็ตตำแหน่งสนามเป็นค่าเริ่มต้น")
     m['players_a_list'] = [f"ตัวจริง A{i+1}" for i in range(6)]
     m['players_b_list'] = [f"ตัวจริง B{i+1}" for i in range(6)]
-    sync_ui_state()  # 🟢 ซิงก์ค่าหน้าจอ
+    m['ui_key'] = m.get('ui_key', 0) + 1  # 🟢 กระตุ้นให้ Sidebar อัปเดต
     update_and_sync()
 
 def get_current_court(team_key):
@@ -172,7 +161,7 @@ def substitute_player(team_key, pos_idx, bench_idx):
     plist[pos_idx] = in_player
     blist[bench_idx] = out_player
 
-    sync_ui_state()  # 🟢 ซิงก์ค่าหน้าจอหลังจากสลับตัว
+    m['ui_key'] = m.get('ui_key', 0) + 1  # 🟢 กระตุ้นให้ Sidebar อัปเดต
     save_snapshot(f"{team_name} เปลี่ยนตัว: {in_player} (เข้า) แทน {out_player} (ออก)")
     update_and_sync()
 
@@ -305,6 +294,9 @@ st.title(f"🏐 PT SPORT 2026 CONTROLLER (คู่ที่ {m['match_no']})")
 st.markdown(f"### 📌 **กำลังแข่ง: เซตที่ {m['current_set'] + 1}** (เป้าหมาย {m['target_score_reg'] if m['current_set'] < 2 else m['target_score_tie']} คะแนน)", unsafe_allow_html=True)
 
 # 👈 SIDEBAR: ตั้งค่าแข่งขัน & ชื่อผู้เล่น
+# 🟢 ใช้ค่า ui_key ผูกเข้ากับคีย์ของช่องกรอกข้อความ
+current_ui_key = m.get('ui_key', 0)
+
 with st.sidebar:
     st.header("⚙️ ตั้งค่าข้อมูลการแข่งขัน")
     m['gender'] = st.radio("ประเภท", ["ชาย", "หญิง", "ผสม"], horizontal=True, index=["ชาย", "หญิง", "ผสม"].index(m['gender']))
@@ -321,18 +313,18 @@ with st.sidebar:
     with st.expander(f"🏃‍♂️ รายชื่อผู้เล่น {m['team_a']} (กดเพื่อแก้ไข)", expanded=False):
         st.markdown("**ตัวจริง (6 ตำแหน่ง):**")
         for idx in range(6):
-            m['players_a_list'][idx] = st.text_input(f"ตำแหน่ง {idx+1}", m['players_a_list'][idx], key=f"inp_main_a_{idx}")
+            m['players_a_list'][idx] = st.text_input(f"ตำแหน่ง {idx+1}", value=m['players_a_list'][idx], key=f"main_a_{idx}_{current_ui_key}")
         st.markdown("**ตัวสำรอง:**")
         for idx in range(len(m['bench_a'])):
-            m['bench_a'][idx] = st.text_input(f"สำรอง {idx+1}", m['bench_a'][idx], key=f"inp_bench_a_{idx}")
+            m['bench_a'][idx] = st.text_input(f"สำรอง {idx+1}", value=m['bench_a'][idx], key=f"bench_a_{idx}_{current_ui_key}")
 
     with st.expander(f"🏃‍♂️ รายชื่อผู้เล่น {m['team_b']} (กดเพื่อแก้ไข)", expanded=False):
         st.markdown("**ตัวจริง (6 ตำแหน่ง):**")
         for idx in range(6):
-            m['players_b_list'][idx] = st.text_input(f"ตำแหน่ง {idx+1}", m['players_b_list'][idx], key=f"inp_main_b_{idx}")
+            m['players_b_list'][idx] = st.text_input(f"ตำแหน่ง {idx+1}", value=m['players_b_list'][idx], key=f"main_b_{idx}_{current_ui_key}")
         st.markdown("**ตัวสำรอง:**")
         for idx in range(len(m['bench_b'])):
-            m['bench_b'][idx] = st.text_input(f"สำรอง {idx+1}", m['bench_b'][idx], key=f"inp_bench_b_{idx}")
+            m['bench_b'][idx] = st.text_input(f"สำรอง {idx+1}", value=m['bench_b'][idx], key=f"bench_b_{idx}_{current_ui_key}")
 
     if st.button("💾 บันทึกการแก้ไขชื่อ/ตั้งค่า", type="primary", use_container_width=True):
         update_and_sync()
