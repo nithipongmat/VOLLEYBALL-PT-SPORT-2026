@@ -171,12 +171,12 @@ def start_new_match():
     
     update_and_sync()
 
+# 🔄 หมุนตำแหน่งตามเข็มนาฬิกาแบบ Direct In-place Modification
 def rotate_team_cw(team_key):
     m = st.session_state.match_data
-    if team_key == 'a':
-        m['players_a_list'][:] = m['players_a_list'][1:] + m['players_a_list'][:1]
-    else:
-        m['players_b_list'][:] = m['players_b_list'][1:] + m['players_b_list'][:1]
+    target_list = m['players_a_list'] if team_key == 'a' else m['players_b_list']
+    first_player = target_list.pop(0)
+    target_list.append(first_player)
 
 def reset_positions():
     m = st.session_state.match_data
@@ -220,6 +220,7 @@ def add_score(team):
     
     save_snapshot(f"{team_name} ได้คะแนน (+1)")
     
+    # 🏐 หมุนตำแหน่งอัตโนมัติหากฝั่งรับได้คะแนน (Side-out)
     if m['server'] != team:
         m['server'] = team
         rotate_team_cw(team)
@@ -332,10 +333,9 @@ if HAS_AUTOREFRESH: st_autorefresh(interval=1000, key="controller_tick")
 
 st.title(f"🏐 PT SPORT 2026 CONTROLLER (คู่ที่ {m['match_no']})")
 
-# 📌 แสดงสถานะเซตปัจจุบันชัดเจน
 st.markdown(f"### 📌 **กำลังแข่ง: เซตที่ {m['current_set'] + 1}** (เป้าหมาย {m['target_score_reg'] if m['current_set'] < 2 else m['target_score_tie']} คะแนน)", unsafe_allow_html=True)
 
-# 👈 SIDEBAR: แก้ไขชื่อผู้เล่นตัวจริง & สำรอง
+# 👈 SIDEBAR: ตั้งค่าแข่งขัน & ชื่อผู้เล่น
 with st.sidebar:
     st.header("⚙️ ตั้งค่าข้อมูลการแข่งขัน")
     m['gender'] = st.radio("ประเภท", ["ชาย", "หญิง", "ผสม"], horizontal=True, index=["ชาย", "หญิง", "ผสม"].index(m['gender']))
@@ -349,7 +349,6 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # 🏃‍♂️ แก้ไขชื่อผู้เล่นทีม A
     with st.expander(f"🏃‍♂️ รายชื่อผู้เล่น {m['team_a']} (กดเพื่อแก้ไข)", expanded=False):
         st.markdown("**ตัวจริง (6 ตำแหน่ง):**")
         for idx in range(6):
@@ -358,7 +357,6 @@ with st.sidebar:
         for idx in range(len(m['bench_a'])):
             m['bench_a'][idx] = st.text_input(f"สำรอง {idx+1}", m['bench_a'][idx], key=f"inp_bench_a_{idx}")
 
-    # 🏃‍♂️ แก้ไขชื่อผู้เล่นทีม B
     with st.expander(f"🏃‍♂️ รายชื่อผู้เล่น {m['team_b']} (กดเพื่อแก้ไข)", expanded=False):
         st.markdown("**ตัวจริง (6 ตำแหน่ง):**")
         for idx in range(6):
@@ -487,7 +485,7 @@ with col2:
                 update_and_sync()
                 st.rerun()
 
-# ⏱️ ปุ่มขอเวลานอก & สลับฝั่ง
+# ⏱️ ปุ่มขอเวลานอก & จัดการสนาม
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("⏱️ ปุ่มขอเวลานอก & จัดการสนาม")
 to_col1, to_col2, to_col3, to_col4 = st.columns([2, 2, 2, 2])
@@ -505,12 +503,11 @@ with to_col3:
         update_and_sync()
         st.rerun()
 with to_col4:
-    # 🔄 ปุ่มรีเซ็ตตำแหน่งสนามกลับมาแล้ว
     if st.button("🔄 รีเซ็ตตำแหน่งผู้เล่น", use_container_width=True, type="secondary"):
         reset_positions()
         st.rerun()
 
-# ⏱️ แถบแสดงถอยหลังเวลานอกใต้ปุ่ม
+# ⏱️ ถอยหลังเวลานอก
 if m.get('timeout_active', False):
     rem_timeout = int(m['timeout_end_time'] - time.time())
     if rem_timeout <= 0:
@@ -528,7 +525,7 @@ if m.get('timeout_active', False):
 # 🏐 FIELD DISPLAY & SUBSTITUTIONS
 # =========================================================
 st.markdown("---")
-st.subheader("🏐 ผังตำแหน่งผู้เล่นบนสนาม")
+st.subheader("🏐 ผังตำแหน่งผู้เล่นบนสนาม (เรียง 5-4 / 6-3 / 1-2)")
 
 def render_player_box(pos_num, player_name, is_server=False):
     border_color = "#f59e0b" if is_server else "#475569"
