@@ -49,13 +49,25 @@ DEFAULT_MATCH_DATA = {
 
 # --- SHARED STATE FUNCTIONS ---
 def load_shared_state():
+    data = copy.deepcopy(DEFAULT_MATCH_DATA)
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                loaded = json.load(f)
+                data.update(loaded)
         except Exception:
             pass
-    return copy.deepcopy(DEFAULT_MATCH_DATA)
+            
+    # ตรวจสอบและป้องกัน KeyError สำหรับโครงสร้างข้อมูลเก่า
+    for team_key in ['players_a', 'players_b']:
+        if team_key not in data:
+            data[team_key] = copy.deepcopy(DEFAULT_MATCH_DATA[team_key])
+        if 'initial_court' not in data[team_key]:
+            data[team_key]['initial_court'] = copy.deepcopy(data[team_key]['court'])
+        if 'history' not in data:
+            data['history'] = []
+            
+    return data
 
 def save_shared_state(data):
     with open(STATE_FILE, "w", encoding="utf-8") as f:
