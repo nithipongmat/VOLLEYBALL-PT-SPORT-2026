@@ -36,9 +36,7 @@ DEFAULT_MATCH_DATA = {
     'timeout_end_time': 0,
     'history': [],
     'logs': [],
-    'rot_a': 0,
-    'rot_b': 0,
-    'players_a_list': ['A1', 'A2', 'A3', 'A4', 'A5', 'A6'], # ตำแหน่ง 1-6
+    'players_a_list': ['A1', 'A2', 'A3', 'A4', 'A5', 'A6'], # ตำแหน่ง POS 1 ถึง POS 6
     'players_b_list': ['B1', 'B2', 'B3', 'B4', 'B5', 'B6'],
     'bench_a': ['สำรอง A1', 'สำรอง A2', 'สำรอง A3', 'สำรอง A4', 'สำรอง A5'],
     'bench_b': ['สำรอง B1', 'สำรอง B2', 'สำรอง B3', 'สำรอง B4', 'สำรอง B5'],
@@ -77,8 +75,6 @@ def save_snapshot(action_text=""):
         'current_set': m['current_set'],
         'server': m['server'],
         'swapped_sides': m['swapped_sides'],
-        'rot_a': m['rot_a'],
-        'rot_b': m['rot_b'],
         'players_a_list': copy.deepcopy(m['players_a_list']),
         'players_b_list': copy.deepcopy(m['players_b_list']),
         'bench_a': copy.deepcopy(m['bench_a']),
@@ -102,8 +98,6 @@ def undo_last_action():
         m['current_set'] = last_state['current_set']
         m['server'] = last_state['server']
         m['swapped_sides'] = last_state['swapped_sides']
-        m['rot_a'] = last_state['rot_a']
-        m['rot_b'] = last_state['rot_b']
         m['players_a_list'] = last_state.get('players_a_list', m['players_a_list'])
         m['players_b_list'] = last_state.get('players_b_list', m['players_b_list'])
         m['bench_a'] = last_state.get('bench_a', m['bench_a'])
@@ -168,8 +162,6 @@ def start_new_match():
     m['scores'] = [{'a': 0, 'b': 0}, {'a': 0, 'b': 0}, {'a': 0, 'b': 0}]
     m['current_set'] = 0
     m['swapped_sides'] = False
-    m['rot_a'] = 0
-    m['rot_b'] = 0
     m['history'] = []
     m['logs'] = []
     m['match_started'] = False
@@ -180,26 +172,26 @@ def start_new_match():
     
     update_and_sync()
 
+# ระบบหมุนตำแหน่งตามโครงสร้างโค้ดที่ 1 (Pos1 -> Pos6 -> Pos5 -> Pos4 -> Pos3 -> Pos2 -> Pos1)
 def rotate_team_cw(team_key):
     m = st.session_state.match_data
     if team_key == 'a':
-        m['rot_a'] = (m['rot_a'] + 1) % 6
+        m['players_a_list'][:] = m['players_a_list'][1:] + m['players_a_list'][:1]
     else:
-        m['rot_b'] = (m['rot_b'] + 1) % 6
+        m['players_b_list'][:] = m['players_b_list'][1:] + m['players_b_list'][:1]
 
-# หมุนตามรูปภาพ: ย้ายคนจาก 1->6->5->4->3->2->1
+# ดึงตำแหน่งผู้เล่นจาก Index 0-5 เข้า POS 1-6 ตรงๆ
 def get_current_court(team_key):
     m = st.session_state.match_data
     plist = m['players_a_list'] if team_key == 'a' else m['players_b_list']
-    rot = m['rot_a'] if team_key == 'a' else m['rot_b']
     
     court = {
-        '1': plist[(1 - rot) % 6],
-        '2': plist[(2 - rot) % 6],
-        '3': plist[(3 - rot) % 6],
-        '4': plist[(4 - rot) % 6],
-        '5': plist[(5 - rot) % 6],
-        '6': plist[(6 - rot) % 6]
+        '1': plist[0],
+        '2': plist[1],
+        '3': plist[2],
+        '4': plist[3],
+        '5': plist[4],
+        '6': plist[5]
     }
     return court
 
