@@ -28,7 +28,9 @@ DEFAULT_MATCH_DATA = {
     'swapped_sides': False,
     'server': 'a',
     'match_started': False,
+    'match_paused': False,
     'start_time': None,
+    'accumulated_time': 0,
     'timeout_active': False,
     'timeout_team_name': '',
     'timeout_end_time': 0,
@@ -106,7 +108,7 @@ def add_score(team):
     curr_set = st.session_state.match_data['current_set']
     st.session_state.match_data['scores'][curr_set][team] += 1
     
-    # หากมีการเปลี่ยนฝั่งเสิร์ฟ -> หมุนตำแหน่งให้อัตโนมัติทันที
+    # เปลี่ยนฝั่งเสิร์ฟ -> หมุนตำแหน่งอัตโนมัติ (สลับผู้เล่นตามตำแหน่งจริง)
     if st.session_state.match_data['server'] != team:
         st.session_state.match_data['server'] = team
         rotate_team_cw(team)
@@ -167,15 +169,21 @@ if is_scoreboard:
             </div>
             """, unsafe_allow_html=True)
 
-    if m['match_started'] and m['start_time']:
-        elapsed_sec = int(time.time() - m['start_time'])
-        time_str = time.strftime("%H:%M:%S", time.gmtime(elapsed_sec))
+    # TIMER CALCULATION
+    if m['match_started'] and not m.get('match_paused', False):
+        elapsed_sec = int(m.get('accumulated_time', 0) + (time.time() - m['start_time']))
         status_badge = "🔴 LIVE"
         status_color = "#ef4444"
-    else:
-        time_str = "00:00:00"
-        status_badge = "⏸️ รอเริ่มแข่ง"
+    elif m.get('match_paused', False):
+        elapsed_sec = int(m.get('accumulated_time', 0))
+        status_badge = "⏸️ พักเวลา"
         status_color = "#f59e0b"
+    else:
+        elapsed_sec = 0
+        status_badge = "⏹️ รอเริ่มแข่ง"
+        status_color = "#64748b"
+
+    time_str = time.strftime("%H:%M:%S", time.gmtime(elapsed_sec))
 
     st.markdown("<h1 style='text-align: center; font-size: 50px; margin-bottom: 0px;'>PT SPORT 2026</h1>", unsafe_allow_html=True)
     
@@ -279,28 +287,48 @@ with st.sidebar:
         update_and_sync()
         st.success("บันทึกข้อมูลเรียบร้อย!")
 
-# MATCH TIME CONTROLS
-start_col1, start_col2, start_col3 = st.columns([2, 1, 1])
+# MATCH TIME CONTROLS (WITH PAUSE BUTTON)
+start_col1, start_col2, start_col3, start_col4 = st.columns([2, 1.5, 1, 1])
+
 with start_col1:
     if not m['match_started']:
-        if st.button("▶️ เริ่มการแข่งขัน (Start Match)", type="primary", use_container_width=True):
+        if st.button("▶️ เริ่มเวลาแข่ง (Start)", type="primary", use_container_width=True):
             m['match_started'] = True
+            m['match_paused'] = False
+            m['start_time'] = time.time()
+            m['accumulated_time'] = 0
+            update_and_sync()
+            st.rerun()
+    elif m.get('match_paused', False):
+        if st.button("▶️ เดินเวลาต่อ (Resume)", type="primary", use_container_width=True):
+            m['match_paused'] = False
             m['start_time'] = time.time()
             update_and_sync()
             st.rerun()
     else:
-        elapsed_sec = int(time.time() - m['start_time']) if m['start_time'] else 0
-        time_str = time.strftime("%H:%M:%S", time.gmtime(elapsed_sec))
-        st.success(f"🟢 **กำลังแข่งขัน:** ⏱️ {time_str}")
+        elapsed = int(m.get('accumulated_time', 0) + (time.time() - m['start_time']))
+        t_str = time.strftime("%H:%M:%S", time.gmtime(elapsed))
+        st.success(f"🔴 LIVE: ⏱️ {t_str}")
 
 with start_col2:
-    if st.button("⏸️ รีเซ็ตเวลาแข่ง", use_container_width=True):
-        m['start_time'] = time.time()
+    if m['match_started'] and not m.get('match_paused', False):
+        if st.button("⏸️ พัก/หยุดเวลา", use_container_width=True):
+            m['match_paused'] = True
+            m['accumulated_time'] += (time.time() - m['start_time'])
+            update_and_sync()
+            st.rerun()
+
+with start_col3:
+    if st.button("🔄 รีเซ็ตเวลา", use_container_width=True):
+        m['match_started'] = False
+        m['match_paused'] = False
+        m['accumulated_time'] = 0
+        m['start_time'] = None
         update_and_sync()
         st.rerun()
 
-with start_col3:
-    if st.button("🔄 สลับฝั่งสนาม (Swap)", use_container_width=True):
+with start_col4:
+    if st.button("🔁 สลับฝั่ง", use_container_width=True):
         toggle_sides()
         update_and_sync()
         st.rerun()
