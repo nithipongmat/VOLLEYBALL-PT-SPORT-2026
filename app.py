@@ -38,7 +38,6 @@ DEFAULT_MATCH_DATA = {
     'has_libero_a': True,
     'has_libero_b': True,
     'players_a': {
-        # เก็บตามตำแหน่ง 1-6 (เลขสีแดงในรูป)
         'court': {'1': 'A1', '2': 'A2', '3': 'A3', '4': 'A4', '5': 'A5', '6': 'A6'},
         'bench': ['สำรอง A1', 'สำรอง A2', 'สำรอง A3', 'สำรอง A4', 'สำรอง A5'],
         'libero': ['ลิบเบโร่ A1', 'ลิบเบโร่ A2'],
@@ -130,16 +129,16 @@ def reset_all_match_scores():
     m['start_time'] = None
     update_and_sync()
 
-# หมุนตำแหน่งผู้เล่นเข้าสู่ตำแหน่ง 1-6 ใหม่
+# ฟังก์ชันหมุนผู้เล่นตามเข็มนาฬิกา
 def rotate_team_cw(team_key):
     c = st.session_state.match_data[f'players_{team_key}']['court']
     new_court = {
-        '1': c['2'],  # คนจากตำแหน่ง 2 ขยับมาตำแหน่ง 1 (เพื่อเสิร์ฟ)
-        '6': c['1'],  # คนจากตำแหน่ง 1 ถอยไปตำแหน่ง 6
-        '5': c['6'],  # คนจากตำแหน่ง 6 ขึ้นไปตำแหน่ง 5
-        '4': c['5'],  # คนจากตำแหน่ง 5 ขยับไปตำแหน่ง 4
-        '3': c['4'],  # คนจากตำแหน่ง 4 ลงมาตำแหน่ง 3
-        '2': c['3']   # คนจากตำแหน่ง 3 ลงมาตำแหน่ง 2
+        '1': c['2'],  # คนจากตำแหน่ง 2 ขยับไป 1 (เพื่อเสิร์ฟ)
+        '6': c['1'],  # คนจาก 1 ไป 6
+        '5': c['6'],  # คนจาก 6 ไป 5
+        '4': c['5'],  # คนจาก 5 ไป 4
+        '3': c['4'],  # คนจาก 4 ไป 3
+        '2': c['3']   # คนจาก 3 ไป 2
     }
     st.session_state.match_data[f'players_{team_key}']['court'] = new_court
 
@@ -147,9 +146,6 @@ def reset_team_rotation(team_key):
     st.session_state.match_data[f'players_{team_key}']['court'] = copy.deepcopy(
         st.session_state.match_data[f'players_{team_key}'].get('initial_court', st.session_state.match_data[f'players_{team_key}']['court'])
     )
-
-def toggle_sides():
-    st.session_state.match_data['swapped_sides'] = not st.session_state.match_data['swapped_sides']
 
 def check_set_winner(sa, sb, target):
     if (sa >= target or sb >= target) and abs(sa - sb) >= 2:
@@ -176,10 +172,10 @@ def add_score(team):
     save_snapshot()
     curr_set = st.session_state.match_data['current_set']
     
-    # Side-out: ถ้าได้แต้มขณะไม่ได้เป็นฝ่ายเสิร์ฟ -> หมุนตำแหน่งเพื่อเปลี่ยนคนเสิร์ฟใหม่
+    # ตรวจสอบการหมุนตำแหน่ง (ถ้าทีมที่ได้แต้ม ไม่ได้เป็นฝ่ายเสิร์ฟอยู่ก่อน = ได้ Side-Out)
     if st.session_state.match_data['server'] != team:
         st.session_state.match_data['server'] = team
-        rotate_team_cw(team)
+        rotate_team_cw(team)  # สั่งหมุนตำแหน่งตามเข็มนาฬิกาทันที
 
     st.session_state.match_data['scores'][curr_set][team] += 1
 
@@ -191,7 +187,6 @@ def add_score(team):
         new_sets_a, new_sets_b = calculate_sets_won()
         if new_sets_a < 2 and new_sets_b < 2 and curr_set < 2:
             st.session_state.match_data['current_set'] += 1
-            toggle_sides()
     update_and_sync()
 
 def change_server_only(team):
@@ -200,15 +195,15 @@ def change_server_only(team):
     update_and_sync()
 
 # =========================================================
-# 📺 MODE 1: SCOREBOARD DISPLAY
+# 📺 MODE 1: SCOREBOARD DISPLAY (จอแสดงผลใหญ่)
 # =========================================================
 if is_scoreboard:
     if HAS_AUTOREFRESH: st_autorefresh(interval=1000, key="scoreboard_tick")
     m = load_shared_state()
     curr_set = m['current_set']
-    is_swapped = m['swapped_sides']
-    left_team, right_team = ('b', 'a') if is_swapped else ('a', 'b')
-    left_name, right_name = m[f'team_{left_team}'], m[f'team_{right_team}']
+    
+    left_team, right_team = 'a', 'b'
+    left_name, right_name = m['team_a'], m['team_b']
 
     if m.get('timeout_active', False):
         rem_timeout = int(m['timeout_end_time'] - time.time())
@@ -236,8 +231,8 @@ if is_scoreboard:
     time_str = time.strftime("%H:%M:%S", time.gmtime(elapsed_sec))
     st.markdown("<h1 style='text-align: center; font-size: 50px; margin-bottom: 0px;'>PT SPORT 2026</h1>", unsafe_allow_html=True)
     
-    serve_left = " 🏐" if m['server'] == left_team else ""
-    serve_right = " 🏐" if m['server'] == right_team else ""
+    serve_left = " 🏐" if m['server'] == 'a' else ""
+    serve_right = " 🏐" if m['server'] == 'b' else ""
 
     team_head_col1, vs_col, team_head_col2 = st.columns([5, 2, 5])
     with team_head_col1: st.markdown(f"<div style='border: 3px solid white; border-radius: 12px; padding: 12px; text-align: center; font-size: 32px; font-weight: bold;'>{left_name}{serve_left}</div>", unsafe_allow_html=True)
@@ -248,22 +243,22 @@ if is_scoreboard:
     sc_left, sc_center, sc_right = st.columns([4, 3, 4])
 
     with sc_left:
-        st.markdown(f"<div style='border: 4px solid white; border-radius: 20px; padding: 20px; text-align: center; background-color: #0f172a;'><h1 style='font-size: 160px; margin: 0; color: #2563eb; font-weight: bold;'>{m['scores'][curr_set][left_team]:02d}</h1></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='border: 4px solid white; border-radius: 20px; padding: 20px; text-align: center; background-color: #0f172a;'><h1 style='font-size: 160px; margin: 0; color: #2563eb; font-weight: bold;'>{m['scores'][curr_set]['a']:02d}</h1></div>", unsafe_allow_html=True)
 
     with sc_center:
         st.markdown(f"<div style='border: 2px solid white; border-radius: 10px; padding: 8px; text-align: center; font-size: 26px; font-weight: bold; background-color: #1e293b; margin-bottom: 15px;'><span style='color: {status_color}; font-size: 16px; margin-right: 8px;'>{status_badge}</span> ⏱️ {time_str}</div>", unsafe_allow_html=True)
         for s_idx in range(3):
-            set_sa, set_sb = m['scores'][s_idx][left_team], m['scores'][s_idx][right_team]
+            set_sa, set_sb = m['scores'][s_idx]['a'], m['scores'][s_idx]['b']
             is_active = (s_idx == curr_set)
             st.markdown(f"<div style='border: {'3px solid #f59e0b' if is_active else '1px solid #64748b'}; border-radius: 8px; padding: 6px; text-align: center; background-color: {'#2563eb' if is_active else '#334155'}; margin-bottom: 8px;'><div style='font-size: 14px;'>SET {s_idx + 1}</div><div style='font-size: 22px; font-weight: bold;'>{set_sa} - {set_sb}</div></div>", unsafe_allow_html=True)
 
     with sc_right:
-        st.markdown(f"<div style='border: 4px solid white; border-radius: 20px; padding: 20px; text-align: center; background-color: #0f172a;'><h1 style='font-size: 160px; margin: 0; color: #ea580c; font-weight: bold;'>{m['scores'][curr_set][right_team]:02d}</h1></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='border: 4px solid white; border-radius: 20px; padding: 20px; text-align: center; background-color: #0f172a;'><h1 style='font-size: 160px; margin: 0; color: #ea580c; font-weight: bold;'>{m['scores'][curr_set]['b']:02d}</h1></div>", unsafe_allow_html=True)
 
     st.stop()
 
 # =========================================================
-# 🎛️ MODE 2: CONTROLLER PANEL
+# 🎛️ MODE 2: CONTROLLER PANEL (หน้าจอผู้ควบคุม)
 # =========================================================
 if HAS_AUTOREFRESH: st_autorefresh(interval=1000, key="controller_tick")
 m = st.session_state.match_data
@@ -318,7 +313,7 @@ with st.sidebar:
         st.success("บันทึกข้อมูลเรียบร้อย!")
 
 # CONTROLS
-start_col1, start_col2, start_col3, start_col4, start_col5, start_col6 = st.columns([1.8, 1.2, 1, 1, 1.2, 1.5])
+start_col1, start_col2, start_col3, start_col4, start_col5 = st.columns([2, 1.5, 1.2, 1.5, 2])
 with start_col1:
     if not m['match_started']:
         if st.button("▶️ เริ่มเวลาแข่ง", type="primary", use_container_width=True):
@@ -356,62 +351,55 @@ with start_col3:
         st.rerun()
 
 with start_col4:
-    if st.button("🔁 สลับฝั่ง", use_container_width=True):
-        toggle_sides()
-        update_and_sync()
-        st.rerun()
-
-with start_col5:
     if st.button("↩️ ย้อนกลับ/ลบคะแนน", type="secondary", use_container_width=True):
         undo_last_action()
         st.rerun()
 
-with start_col6:
+with start_col5:
     if st.button("🧹 รีเซ็ตคะแนนทั้งหมด", type="primary", use_container_width=True):
         reset_all_match_scores()
         st.rerun()
 
 st.markdown("---")
 
-# SCORE CONTROLS
+# SCORE CONTROLS (ฝั่งซ้าย = A / ฝั่งขวา = B ล็อกถาวร)
 curr_set = m['current_set']
-is_swapped = m['swapped_sides']
-left_team, right_team = ('b', 'a') if is_swapped else ('a', 'b')
 
 col1, col2 = st.columns(2)
+
+# ฝั่งซ้าย: ทีม A
 with col1:
-    t_key = left_team
-    t_name = m[f'team_{t_key}']
+    t_name = m['team_a']
     with st.container(border=True):
-        st.markdown(f"### {t_name} {'🏐 (เสิร์ฟ)' if m['server'] == t_key else ''}")
-        st.markdown(f"<h1 style='text-align: center; font-size: 80px; margin: 0;'>{m['scores'][curr_set][t_key]}</h1>", unsafe_allow_html=True)
+        st.markdown(f"### {t_name} {'🏐 (เสิร์ฟ)' if m['server'] == 'a' else ''}")
+        st.markdown(f"<h1 style='text-align: center; font-size: 80px; margin: 0; color: #2563eb;'>{m['scores'][curr_set]['a']}</h1>", unsafe_allow_html=True)
         btn_c1, btn_c2 = st.columns(2)
         with btn_c1:
-            if st.button(f"➕ ได้คะแนน ({t_name})", use_container_width=True, type="primary", key="add_left"):
-                add_score(t_key)
+            if st.button(f"➕ ได้คะแนน ({t_name})", use_container_width=True, type="primary", key="add_a"):
+                add_score('a')
                 st.rerun()
         with btn_c2:
-            if st.button(f"🏐 ให้เสิร์ฟใหม่ ({t_name})", use_container_width=True, key="re_serve_left"):
-                change_server_only(t_key)
+            if st.button(f"🏐 ให้เสิร์ฟใหม่ ({t_name})", use_container_width=True, key="re_serve_a"):
+                change_server_only('a')
                 st.rerun()
 
+# ฝั่งขวา: ทีม B
 with col2:
-    t_key = right_team
-    t_name = m[f'team_{t_key}']
+    t_name = m['team_b']
     with st.container(border=True):
-        st.markdown(f"### {t_name} {'🏐 (เสิร์ฟ)' if m['server'] == t_key else ''}")
-        st.markdown(f"<h1 style='text-align: center; font-size: 80px; margin: 0;'>{m['scores'][curr_set][t_key]}</h1>", unsafe_allow_html=True)
+        st.markdown(f"### {t_name} {'🏐 (เสิร์ฟ)' if m['server'] == 'b' else ''}")
+        st.markdown(f"<h1 style='text-align: center; font-size: 80px; margin: 0; color: #ea580c;'>{m['scores'][curr_set]['b']}</h1>", unsafe_allow_html=True)
         btn_c1, btn_c2 = st.columns(2)
         with btn_c1:
-            if st.button(f"➕ ได้คะแนน ({t_name})", use_container_width=True, type="primary", key="add_right"):
-                add_score(t_key)
+            if st.button(f"➕ ได้คะแนน ({t_name})", use_container_width=True, type="primary", key="add_b"):
+                add_score('b')
                 st.rerun()
         with btn_c2:
-            if st.button(f"🏐 ให้เสิร์ฟใหม่ ({t_name})", use_container_width=True, key="re_serve_right"):
-                change_server_only(t_key)
+            if st.button(f"🏐 ให้เสิร์ฟใหม่ ({t_name})", use_container_width=True, key="re_serve_b"):
+                change_server_only('b')
                 st.rerun()
 
-# FIELD DISPLAY (จัดเรียงตามตำแหน่งสีแดงในรูปวาดล่าสุด)
+# FIELD DISPLAY (จัดวางตามตำแหน่งเลขสีแดงในรูปวาด)
 st.markdown("---")
 st.subheader("🏐 ผังตำแหน่งผู้เล่นบนสนาม (ตำแหน่ง 1 คือจุดเสิร์ฟ)")
 
@@ -425,22 +413,19 @@ def render_player_box(pos_num, player_name, is_server=False):
 
 field_col1, field_col2 = st.columns(2)
 
-# TEAM A FIELD (ตำแหน่ง 1 อยู่ซ้ายล่าง)
+# TEAM A FIELD (ฝั่งซ้าย: ตำแหน่ง 1 อยู่ซ้ายล่าง)
 with field_col1:
     st.markdown(f"### {m['team_a']} {'🏐' if m['server'] == 'a' else ''}")
     ca = m['players_a']['court']
     
-    # [5, 4]
     r1_1, r1_2 = st.columns(2)
     with r1_1: st.markdown(render_player_box('5', ca['5']), unsafe_allow_html=True)
     with r1_2: st.markdown(render_player_box('4', ca['4']), unsafe_allow_html=True)
     
-    # [6, 3]
     r2_1, r2_2 = st.columns(2)
     with r2_1: st.markdown(render_player_box('6', ca['6']), unsafe_allow_html=True)
     with r2_2: st.markdown(render_player_box('3', ca['3']), unsafe_allow_html=True)
     
-    # [1, 2] -> 1 คือคนเสิร์ฟ (ซ้ายล่าง)
     r3_1, r3_2 = st.columns(2)
     with r3_1: st.markdown(render_player_box('1', ca['1'], is_server=(m['server'] == 'a')), unsafe_allow_html=True)
     with r3_2: st.markdown(render_player_box('2', ca['2']), unsafe_allow_html=True)
@@ -450,22 +435,19 @@ with field_col1:
         update_and_sync()
         st.rerun()
 
-# TEAM B FIELD (ตำแหน่ง 1 อยู่ขวาบน)
+# TEAM B FIELD (ฝั่งขวา: ตำแหน่ง 1 อยู่ขวาบน)
 with field_col2:
     st.markdown(f"### {m['team_b']} {'🏐' if m['server'] == 'b' else ''}")
     cb = m['players_b']['court']
 
-    # [5, 1] -> 1 คือคนเสิร์ฟ (ขวาบน)
     r1_1, r1_2 = st.columns(2)
     with r1_1: st.markdown(render_player_box('5', cb['5']), unsafe_allow_html=True)
     with r1_2: st.markdown(render_player_box('1', cb['1'], is_server=(m['server'] == 'b')), unsafe_allow_html=True)
     
-    # [4, 2]
     r2_1, r2_2 = st.columns(2)
     with r2_1: st.markdown(render_player_box('4', cb['4']), unsafe_allow_html=True)
     with r2_2: st.markdown(render_player_box('2', cb['2']), unsafe_allow_html=True)
     
-    # [3, 6]
     r3_1, r3_2 = st.columns(2)
     with r3_1: st.markdown(render_player_box('3', cb['3']), unsafe_allow_html=True)
     with r3_2: st.markdown(render_player_box('6', cb['6']), unsafe_allow_html=True)
