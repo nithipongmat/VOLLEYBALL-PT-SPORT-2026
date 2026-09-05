@@ -120,13 +120,13 @@ def calculate_sets_won():
         elif winner == 'b': sets_b += 1
     return sets_a, sets_b
 
-# 🏐 หมุนตำแหน่งตามกติกา (1->6->5->4->3->2->1)
+# 🏐 แก้ไขระบบหมุนตำแหน่ง: หมุนตามเข็มนาฬิกา (Index 0 จะกลายเป็นตำแหน่ง 1)
 def rotate_team_cw(team_key):
     m = st.session_state.match_data
     target_list = m['players_a_list'] if team_key == 'a' else m['players_b_list']
-    # ย้ายคนตำแหน่ง 1 (index 0) ไปไว้ท้ายสุด เพื่อให้ตำแหน่ง 2 ขึ้นมาตำแหน่ง 1 แทน
-    first_player = target_list.pop(0)
-    target_list.append(first_player)
+    # เลื่อนสมาชิกตัวสุดท้ายมาไว้ข้างหน้า (เพื่อให้คนถัดไปมาอยู่ตำแหน่ง 1 สลับเสิร์ฟ)
+    last_player = target_list.pop()
+    target_list.insert(0, last_player)
 
 def reset_positions():
     m = st.session_state.match_data
@@ -135,24 +135,29 @@ def reset_positions():
     m['players_b_list'] = [f"ตัวจริง B{i+1}" for i in range(6)]
     update_and_sync()
 
+# 🎯 ปรับปรุงจุดนี้: แมปข้อมูล index [0..5] ตรงกับตำแหน่งวอลเลย์บอล [1..6] โดยตรง
 def get_current_court(team_key):
     m = st.session_state.match_data
     plist = m['players_a_list'] if team_key == 'a' else m['players_b_list']
     return {
-        '1': plist[0], '2': plist[1], '3': plist[2],
-        '4': plist[3], '5': plist[4], '6': plist[5]
+        '1': plist[0],  # ตำแหน่ง 1 (ผู้เสิร์ฟ)
+        '2': plist[1],  # ตำแหน่ง 2 (หน้าขวา)
+        '3': plist[2],  # ตำแหน่ง 3 (หน้ากลาง)
+        '4': plist[3],  # ตำแหน่ง 4 (หน้าซ้าย)
+        '5': plist[4],  # ตำแหน่ง 5 (หลังซ้าย)
+        '6': plist[5]   # ตำแหน่ง 6 (หลังกลาง)
     }
 
-def substitute_player(team_key, main_idx, bench_idx):
+def substitute_player(team_key, pos_idx, bench_idx):
     m = st.session_state.match_data
     plist = m['players_a_list'] if team_key == 'a' else m['players_b_list']
     blist = m['bench_a'] if team_key == 'a' else m['bench_b']
     team_name = m['team_a'] if team_key == 'a' else m['team_b']
 
-    out_player = plist[main_idx]
+    out_player = plist[pos_idx]
     in_player = blist[bench_idx]
 
-    plist[main_idx] = in_player
+    plist[pos_idx] = in_player
     blist[bench_idx] = out_player
 
     save_snapshot(f"{team_name} เปลี่ยนตัว: {in_player} (เข้า) แทน {out_player} (ออก)")
@@ -163,17 +168,16 @@ match_winner = None
 if sets_won_a >= 2: match_winner = m['team_a']
 elif sets_won_b >= 2: match_winner = m['team_b']
 
-# 🔧 แก้ไขจุดสำคัญ: เพิ่มการสั่งหมุนตำแหน่งเมื่อสลับฝั่งเสิร์ฟ
 def add_score(team):
     if match_winner: return
     curr_set = m['current_set']
     team_name = m['team_a'] if team == 'a' else m['team_b']
     
-    # ถ้าฝั่งที่ได้แต้มไม่ได้เป็นฝ่ายเสิร์ฟอยู่ -> ต้องได้เปลี่ยนเสิร์ฟ + หมุนตำแหน่งก่อนเสิร์ฟ!
+    # เมื่อเปลี่ยนเสิร์ฟ: เปลี่ยนสิทธิ์เสิร์ฟ + หมุนตำแหน่งทันที
     if m['server'] != team:
         m['server'] = team
-        rotate_team_cw(team) # 👈 สั่งหมุนตำแหน่งผู้เล่นทันที
-        save_snapshot(f"{team_name} ได้แต้ม (เปลี่ยนเสิร์ฟ & หมุนตำแหน่ง)")
+        rotate_team_cw(team)
+        save_snapshot(f"{team_name} ได้แต้ม (เปลี่ยนเสิร์ฟ & หมุนตำแหน่ง -> {get_current_court(team)['1']} เสิร์ฟ)")
     else:
         save_snapshot(f"{team_name} ได้คะแนน (+1)")
 
@@ -476,8 +480,9 @@ st.subheader("🏐 ผังตำแหน่งผู้เล่นบนส�
 
 def render_player_box(pos_num, player_name, is_server=False):
     border_color = "#f59e0b" if is_server else "#475569"
+    bg_color = "#1e293b" if not is_server else "#312e81"
     serve_tag = " 🏐 (เสิร์ฟ)" if is_server else ""
-    return f"""<div style="border: 2px solid {border_color}; border-radius: 8px; padding: 8px; text-align: center; background-color: #1e293b; margin-bottom: 6px;">
+    return f"""<div style="border: 2px solid {border_color}; border-radius: 8px; padding: 8px; text-align: center; background-color: {bg_color}; margin-bottom: 6px;">
         <div style="font-size: 12px; color: #f59e0b; font-weight: bold;">ตำแหน่ง {pos_num}{serve_tag}</div>
         <div style="font-size: 18px; font-weight: bold; color: white;">{player_name}</div>
     </div>"""
@@ -507,15 +512,15 @@ with field_col1:
     with st.expander(f"🔄 เปลี่ยนตัวผู้เล่น ({m['team_a']})"):
         sub_c1, sub_c2, sub_c3 = st.columns([3, 3, 2])
         with sub_c1:
-            sel_main_a = st.selectbox("ผู้เล่นตัวจริงที่จะออก", options=[f"ตำแหน่ง {i+1}: {p}" for i, p in enumerate(m['players_a_list'])], key="sel_main_a")
+            sel_main_a = st.selectbox("เลือกตำแหน่งที่จะเปลี่ยนออก", options=[f"ตำแหน่ง {i+1}: {p}" for i, p in enumerate(m['players_a_list'])], key="sel_main_a")
         with sub_c2:
-            sel_bench_a = st.selectbox("ผู้เล่นสำรองที่จะเข้า", options=[f"สำรอง {i+1}: {p}" for i, p in enumerate(m['bench_a'])], key="sel_bench_a")
+            sel_bench_a = st.selectbox("เลือกตัวสำรองที่จะเข้า", options=[f"สำรอง {i+1}: {p}" for i, p in enumerate(m['bench_a'])], key="sel_bench_a")
         with sub_c3:
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("ยืนยันเปลี่ยนตัว", key="btn_sub_act_a", type="primary", use_container_width=True):
-                m_idx = int(sel_main_a.split(":")[0].replace("ตำแหน่ง ", "")) - 1
+                pos_idx = int(sel_main_a.split(":")[0].replace("ตำแหน่ง ", "")) - 1
                 b_idx = int(sel_bench_a.split(":")[0].replace("สำรอง ", "")) - 1
-                substitute_player('a', m_idx, b_idx)
+                substitute_player('a', pos_idx, b_idx)
                 st.rerun()
 
 # 🔴 TEAM B FIELD (ซ้าย: ติดหน้าเน็ต | ขวา: ท้ายสนาม)
@@ -538,15 +543,15 @@ with field_col2:
     with st.expander(f"🔄 เปลี่ยนตัวผู้เล่น ({m['team_b']})"):
         sub_c1, sub_c2, sub_c3 = st.columns([3, 3, 2])
         with sub_c1:
-            sel_main_b = st.selectbox("ผู้เล่นตัวจริงที่จะออก", options=[f"ตำแหน่ง {i+1}: {p}" for i, p in enumerate(m['players_b_list'])], key="sel_main_b")
+            sel_main_b = st.selectbox("เลือกตำแหน่งที่จะเปลี่ยนออก", options=[f"ตำแหน่ง {i+1}: {p}" for i, p in enumerate(m['players_b_list'])], key="sel_main_b")
         with sub_c2:
-            sel_bench_b = st.selectbox("ผู้เล่นสำรองที่จะเข้า", options=[f"สำรอง {i+1}: {p}" for i, p in enumerate(m['bench_b'])], key="sel_bench_b")
+            sel_bench_b = st.selectbox("เลือกตัวสำรองที่จะเข้า", options=[f"สำรอง {i+1}: {p}" for i, p in enumerate(m['bench_b'])], key="sel_bench_b")
         with sub_c3:
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("ยืนยันเปลี่ยนตัว", key="btn_sub_act_b", type="primary", use_container_width=True):
-                m_idx = int(sel_main_b.split(":")[0].replace("ตำแหน่ง ", "")) - 1
+                pos_idx = int(sel_main_b.split(":")[0].replace("ตำแหน่ง ", "")) - 1
                 b_idx = int(sel_bench_b.split(":")[0].replace("สำรอง ", "")) - 1
-                substitute_player('b', m_idx, b_idx)
+                substitute_player('b', pos_idx, b_idx)
                 st.rerun()
 
 # LOGS
