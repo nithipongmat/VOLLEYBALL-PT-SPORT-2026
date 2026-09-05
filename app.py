@@ -117,15 +117,29 @@ def undo_last_action():
         m['players_b']['court'] = last_state['players_b_court']
         update_and_sync()
 
+def reset_all_match_scores():
+    m = st.session_state.match_data
+    m['scores'] = [{'a': 0, 'b': 0}, {'a': 0, 'b': 0}, {'a': 0, 'b': 0}]
+    m['current_set'] = 0
+    m['history'] = []
+    m['players_a']['court'] = copy.deepcopy(m['players_a']['initial_court'])
+    m['players_b']['court'] = copy.deepcopy(m['players_b']['initial_court'])
+    m['match_started'] = False
+    m['match_paused'] = False
+    m['accumulated_time'] = 0
+    m['start_time'] = None
+    update_and_sync()
+
+# หมุนตำแหน่งตามเข็มนาฬิกา (กติกาจริง: 1->6, 6->5, 5->4, 4->3, 3->2, 2->1)
 def rotate_team_cw(team_key):
     c = st.session_state.match_data[f'players_{team_key}']['court']
     new_c = {
-        '1': c['2'],
         '6': c['1'],
         '5': c['6'],
         '4': c['5'],
         '3': c['4'],
-        '2': c['3']
+        '2': c['3'],
+        '1': c['2']
     }
     st.session_state.match_data[f'players_{team_key}']['court'] = new_c
 
@@ -161,11 +175,13 @@ def add_score(team):
     if match_winner: return
     save_snapshot()
     curr_set = st.session_state.match_data['current_set']
-    st.session_state.match_data['scores'][curr_set][team] += 1
     
+    # Side-out: ถ้าเดิมไม่ได้เป็นฝ่ายเสิร์ฟ แล้วแย่งแต้มกลับมาได้ -> หมุนตำแหน่งตามเข็มนาฬิกา
     if st.session_state.match_data['server'] != team:
         st.session_state.match_data['server'] = team
         rotate_team_cw(team)
+
+    st.session_state.match_data['scores'][curr_set][team] += 1
 
     curr_target = st.session_state.match_data['target_score_reg'] if curr_set < 2 else st.session_state.match_data['target_score_tie']
     sa = st.session_state.match_data['scores'][curr_set]['a']
@@ -320,7 +336,7 @@ with st.expander("📊 ดูผลการแข่งขันเซตที
             st.write(f"{m['team_b']}: **{m['scores'][i]['b']}** คะแนน")
 
 # CONTROLS
-start_col1, start_col2, start_col3, start_col4, start_col5 = st.columns([2, 1.5, 1, 1, 1.5])
+start_col1, start_col2, start_col3, start_col4, start_col5, start_col6 = st.columns([1.8, 1.2, 1, 1, 1.2, 1.5])
 with start_col1:
     if not m['match_started']:
         if st.button("▶️ เริ่มเวลาแข่ง", type="primary", use_container_width=True):
@@ -349,7 +365,7 @@ with start_col2:
             st.rerun()
 
 with start_col3:
-    if st.button("🔄 รีเซ็ตเวลา", use_container_width=True):
+    if st.button("🔄 เวลา", use_container_width=True, help="รีเซ็ตเฉพาะเวลา"):
         m['match_started'] = False
         m['match_paused'] = False
         m['accumulated_time'] = 0
@@ -364,8 +380,13 @@ with start_col4:
         st.rerun()
 
 with start_col5:
-    if st.button("↩️ ย้อนกลับ (Undo)", type="secondary", use_container_width=True):
+    if st.button("↩️ ย้อนกลับ", type="secondary", use_container_width=True, help="Undo ลบคะแนนล่าสุด"):
         undo_last_action()
+        st.rerun()
+
+with start_col6:
+    if st.button("🧹 รีเซ็ตคะแนนทั้งหมด", type="primary", use_container_width=True, help="รีเซ็ตคะแนนทุกเซตและตำแหน่งสนาม"):
+        reset_all_match_scores()
         st.rerun()
 
 st.markdown("---")
@@ -471,7 +492,7 @@ with field_col1:
         update_and_sync()
         st.rerun()
 
-    # Libero Replacement (Optionally Displayed)
+    # Libero Replacement
     if has_lib_a:
         st.markdown(f"**🛡️ เปลี่ยนตัวลิบเบโร่ (แดนหลังเท่านั้น):**")
         backrow_a = {k: court_a[k] for k in ['1', '6', '5']}
@@ -514,7 +535,7 @@ with field_col2:
         update_and_sync()
         st.rerun()
 
-    # Libero Replacement (Optionally Displayed)
+    # Libero Replacement
     if has_lib_b:
         st.markdown(f"**🛡️ เปลี่ยนตัวลิบเบโร่ (แดนหลังเท่านั้น):**")
         backrow_b = {k: court_b[k] for k in ['1', '6', '5']}
