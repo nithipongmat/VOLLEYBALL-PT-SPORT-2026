@@ -21,7 +21,7 @@ DEFAULT_MATCH_DATA = {
     'match_no': '1',
     'target_score_reg': 25,
     'target_score_tie': 15,
-    'use_libero': True,  # 🟢 เพิ่มสถานะ เปิด/ปิด ระบบ Libero
+    'use_libero': True,
     'team_a': 'ทีม A',
     'team_b': 'ทีม B',
     'scores': [{'a': 0, 'b': 0}, {'a': 0, 'b': 0}, {'a': 0, 'b': 0}],
@@ -127,63 +127,13 @@ def calculate_sets_won():
         elif winner == 'b': sets_b += 1
     return sets_a, sets_b
 
-def save_current_match_to_archive():
-    m = st.session_state.match_data
-    sets_a, sets_b = calculate_sets_won()
-    
-    if sets_a > sets_b:
-        winner_name = m['team_a']
-    elif sets_b > sets_a:
-        winner_name = m['team_b']
-    else:
-        winner_name = "เสมอ/ยังไม่จบ"
-
-    match_record = {
-        'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
-        'match_no': m['match_no'],
-        'round_name': m['round_name'],
-        'group_name': m['group_name'],
-        'gender': m['gender'],
-        'team_a': m['team_a'],
-        'team_b': m['team_b'],
-        'sets_a': sets_a,
-        'sets_b': sets_b,
-        'scores': copy.deepcopy(m['scores']),
-        'winner': winner_name
-    }
-    m['archives'].insert(0, match_record)
-
-def start_new_match():
-    m = st.session_state.match_data
-    save_current_match_to_archive()
-    
-    try:
-        next_no = str(int(m['match_no']) + 1)
-    except Exception:
-        next_no = m['match_no'] + " (ใหม่)"
-
-    m['match_no'] = next_no
-    m['team_a'] = f"ทีม A (คู่ที่ {next_no})"
-    m['team_b'] = f"ทีม B (คู่ที่ {next_no})"
-    m['scores'] = [{'a': 0, 'b': 0}, {'a': 0, 'b': 0}, {'a': 0, 'b': 0}]
-    m['current_set'] = 0
-    m['swapped_sides'] = False
-    m['history'] = []
-    m['logs'] = []
-    m['match_started'] = False
-    m['match_paused'] = False
-    m['accumulated_time'] = 0
-    m['start_time'] = None
-    m['timeout_active'] = False
-    
-    update_and_sync()
-
+# 🔄 ระบบหมุนตำแหน่งเด็ดขาด (ตามเข็มนาฬิกา: Pos1 -> Pos6 -> Pos5 -> Pos4 -> Pos3 -> Pos2 -> Pos1)
 def rotate_team_cw(team_key):
     m = st.session_state.match_data
     if team_key == 'a':
-        m['players_a_list'][:] = m['players_a_list'][1:] + m['players_a_list'][:1]
+        m['players_a_list'] = [m['players_a_list'][-1]] + m['players_a_list'][:-1]
     else:
-        m['players_b_list'][:] = m['players_b_list'][1:] + m['players_b_list'][:1]
+        m['players_b_list'] = [m['players_b_list'][-1]] + m['players_b_list'][:-1]
 
 def reset_positions():
     m = st.session_state.match_data
@@ -231,16 +181,18 @@ match_winner = None
 if sets_won_a >= 2: match_winner = m['team_a']
 elif sets_won_b >= 2: match_winner = m['team_b']
 
+# ⚡ เพิ่มคะแนน + หมุนตำแหน่งทันทีถ้าเปลี่ยนฝั่งเสิร์ฟ (Side-out)
 def add_score(team):
     if match_winner: return
     curr_set = m['current_set']
     team_name = m['team_a'] if team == 'a' else m['team_b']
     
-    save_snapshot(f"{team_name} ได้คะแนน (+1)")
-    
     if m['server'] != team:
         m['server'] = team
-        rotate_team_cw(team)
+        rotate_team_cw(team) # หมุนทันที
+        save_snapshot(f"{team_name} ได้คะแนน (+1) [เปลี่ยนฝั่งเสิร์ฟ & หมุนตำแหน่งอัตโนมัติ]")
+    else:
+        save_snapshot(f"{team_name} ได้คะแนน (+1)")
 
     m['scores'][curr_set][team] += 1
 
@@ -349,67 +301,38 @@ if is_scoreboard:
 if HAS_AUTOREFRESH: st_autorefresh(interval=1000, key="controller_tick")
 
 st.title(f"🏐 PT SPORT 2026 CONTROLLER (คู่ที่ {m['match_no']})")
+st.markdown(f"### 📌 **กำลังแข่ง: เซตที่ {m['current_set'] + 1}** (เป้าหมาย {m['target_score_reg'] if m['current_set'] < 2 else m['target_score_tie']} คะแนน)")
 
-# 📌 แสดงสถานะเซตปัจจุบัน
-st.markdown(f"### 📌 **กำลังแข่ง: เซตที่ {m['current_set'] + 1}** (เป้าหมาย {m['target_score_reg'] if m['current_set'] < 2 else m['target_score_tie']} คะแนน)", unsafe_allow_html=True)
-
-# 👈 SIDEBAR: แก้ไขชื่อผู้เล่นตัวจริง, ตัวสำรอง & LIBERO
+# 👈 SIDEBAR: ตั้งค่าข้อมูล (ใช้วิธี Form Submit ป้องกัน State ค้าง)
 with st.sidebar:
     st.header("⚙️ ตั้งค่าข้อมูลการแข่งขัน")
-    m['gender'] = st.radio("ประเภท", ["ชาย", "หญิง", "ผสม"], horizontal=True, index=["ชาย", "หญิง", "ผสม"].index(m['gender']))
-    m['round_name'] = st.text_input("รอบ", m['round_name'])
-    m['group_name'] = st.text_input("สาย", m['group_name'])
-    m['match_no'] = st.text_input("คู่ที่", m['match_no'])
-    m['target_score_reg'] = st.number_input("คะแนนเซตปกติ", min_value=1, value=m['target_score_reg'])
-    m['target_score_tie'] = st.number_input("คะแนนเซตตัดสิน", min_value=1, value=m['target_score_tie'])
-    
-    # 🔘 สวิตช์ เปิด/ปิด ระบบ Libero
-    m['use_libero'] = st.toggle("🛡️ เปิดใช้งานระบบ Libero", value=m.get('use_libero', True))
-    
-    m['team_a'] = st.text_input("ชื่อทีม A", m['team_a'])
-    m['team_b'] = st.text_input("ชื่อทีม B", m['team_b'])
-    
-    st.markdown("---")
-    
-    if 'liberos_a' not in m: m['liberos_a'] = copy.deepcopy(DEFAULT_MATCH_DATA['liberos_a'])
-    if 'liberos_b' not in m: m['liberos_b'] = copy.deepcopy(DEFAULT_MATCH_DATA['liberos_b'])
-
-    # 🏃‍♂️ แก้ไขชื่อผู้เล่นทีม A
-    with st.expander(f"🏃‍♂️ รายชื่อผู้เล่น {m['team_a']} (กดเพื่อแก้ไข)", expanded=False):
-        st.markdown("**ตัวจริง (6 ตำแหน่ง):**")
-        for idx in range(6):
-            m['players_a_list'][idx] = st.text_input(f"ตำแหน่ง {idx+1}", m['players_a_list'][idx], key=f"inp_main_a_{idx}")
+    with st.form("settings_form"):
+        gender = st.radio("ประเภท", ["ชาย", "หญิง", "ผสม"], index=["ชาย", "หญิง", "ผสม"].index(m['gender']))
+        round_name = st.text_input("รอบ", m['round_name'])
+        group_name = st.text_input("สาย", m['group_name'])
+        match_no = st.text_input("คู่ที่", m['match_no'])
+        target_score_reg = st.number_input("คะแนนเซตปกติ", min_value=1, value=m['target_score_reg'])
+        target_score_tie = st.number_input("คะแนนเซตตัดสิน", min_value=1, value=m['target_score_tie'])
+        use_libero = st.toggle("🛡️ เปิดใช้งานระบบ Libero", value=m.get('use_libero', True))
+        team_a = st.text_input("ชื่อทีม A", m['team_a'])
+        team_b = st.text_input("ชื่อทีม B", m['team_b'])
         
-        if m['use_libero']:
-            st.markdown("**🛡️ ผู้เล่นรับอิสระ (Libero):**")
-            m['liberos_a'][0] = st.text_input("Libero 1", m['liberos_a'][0], key="inp_lib1_a")
-            m['liberos_a'][1] = st.text_input("Libero 2", m['liberos_a'][1], key="inp_lib2_a")
-            
-        st.markdown("**ตัวสำรอง:**")
-        for idx in range(len(m['bench_a'])):
-            m['bench_a'][idx] = st.text_input(f"สำรอง {idx+1}", m['bench_a'][idx], key=f"inp_bench_a_{idx}")
+        submitted = st.form_submit_button("💾 บันทึกตั้งค่าข้อมูล", type="primary", use_container_width=True)
+        if submitted:
+            m['gender'] = gender
+            m['round_name'] = round_name
+            m['group_name'] = group_name
+            m['match_no'] = match_no
+            m['target_score_reg'] = target_score_reg
+            m['target_score_tie'] = target_score_tie
+            m['use_libero'] = use_libero
+            m['team_a'] = team_a
+            m['team_b'] = team_b
+            update_and_sync()
+            st.success("บันทึกข้อมูลเรียบร้อย!")
 
-    # 🏃‍♂️ แก้ไขชื่อผู้เล่นทีม B
-    with st.expander(f"🏃‍♂️ รายชื่อผู้เล่น {m['team_b']} (กดเพื่อแก้ไข)", expanded=False):
-        st.markdown("**ตัวจริง (6 ตำแหน่ง):**")
-        for idx in range(6):
-            m['players_b_list'][idx] = st.text_input(f"ตำแหน่ง {idx+1}", m['players_b_list'][idx], key=f"inp_main_b_{idx}")
-            
-        if m['use_libero']:
-            st.markdown("**🛡️ ผู้เล่นรับอิสระ (Libero):**")
-            m['liberos_b'][0] = st.text_input("Libero 1", m['liberos_b'][0], key="inp_lib1_b")
-            m['liberos_b'][1] = st.text_input("Libero 2", m['liberos_b'][1], key="inp_lib2_b")
-            
-        st.markdown("**ตัวสำรอง:**")
-        for idx in range(len(m['bench_b'])):
-            m['bench_b'][idx] = st.text_input(f"สำรอง {idx+1}", m['bench_b'][idx], key=f"inp_bench_b_{idx}")
-
-    if st.button("💾 บันทึกการแก้ไขชื่อ/ตั้งค่า", type="primary", use_container_width=True):
-        update_and_sync()
-        st.success("บันทึกข้อมูลสำเร็จ!")
-
-# CONTROLS TIME & MATCH SWITCHING
-start_col1, start_col2, start_col3, start_col4, start_col5 = st.columns([2, 1.2, 1.2, 1.2, 2.2])
+# CONTROLS TIME
+start_col1, start_col2, start_col3, start_col4 = st.columns([2, 1.5, 1.5, 1.5])
 with start_col1:
     if not m['match_started']:
         if st.button("▶️ เริ่มเวลาแข่ง", type="primary", use_container_width=True):
@@ -447,13 +370,8 @@ with start_col3:
         st.rerun()
 
 with start_col4:
-    if st.button("↩️ เลิกทำ", type="secondary", use_container_width=True):
+    if st.button("↩️ เลิกทำ (Undo)", type="secondary", use_container_width=True):
         undo_last_action()
-        st.rerun()
-
-with start_col5:
-    if st.button("➕ บันทึกผล + ขึ้นคู่ถัดไป", type="primary", use_container_width=True):
-        start_new_match()
         st.rerun()
 
 st.markdown("---")
@@ -462,16 +380,16 @@ st.markdown("---")
 curr_set = m['current_set']
 col1, col2 = st.columns(2)
 
-# ฝั่งซ้าย: ทีม A
+# ทีม A
 with col1:
     t_name = m['team_a']
     with st.container(border=True):
-        st.markdown(f"### {t_name} {'🏐 (กำลังเสิร์ฟ)' if m['server'] == 'a' else ''}")
+        st.markdown(f"### {t_name} {'🏐 (เสิร์ฟ)' if m['server'] == 'a' else ''}")
         st.markdown(f"<h1 style='text-align: center; font-size: 80px; margin: 0; color: #2563eb;'>{m['scores'][curr_set]['a']}</h1>", unsafe_allow_html=True)
         
         b1, b2 = st.columns(2)
         with b1:
-            if st.button(f"➕ ได้คะแนน ({t_name})", use_container_width=True, type="primary", key="add_a"):
+            if st.button(f"➕ เพิ่มคะแนน ({t_name})", use_container_width=True, type="primary", key="add_a"):
                 add_score('a')
                 st.rerun()
         with b2:
@@ -482,27 +400,27 @@ with col1:
         b3, b4 = st.columns(2)
         with b3:
             if st.button(f"🔄 หมุนตำแหน่ง ({t_name})", use_container_width=True, key="rot_a_btn"):
-                save_snapshot(f"{t_name} หมุนตำแหน่ง")
                 rotate_team_cw('a')
+                save_snapshot(f"{t_name} หมุนตำแหน่ง (กดเอง)")
                 update_and_sync()
                 st.rerun()
         with b4:
-            if st.button(f"🏐 กำหนดให้เสิร์ฟ ({t_name})", use_container_width=True, key="srv_a"):
-                save_snapshot(f"เปลี่ยนสิทธิ์เสิร์ฟให้ {t_name}")
+            if st.button(f"🏐 ให้สิทธิ์เสิร์ฟ ({t_name})", use_container_width=True, key="srv_a"):
                 m['server'] = 'a'
+                save_snapshot(f"เปลี่ยนสิทธิ์เสิร์ฟให้ {t_name}")
                 update_and_sync()
                 st.rerun()
 
-# ฝั่งขวา: ทีม B
+# ทีม B
 with col2:
     t_name = m['team_b']
     with st.container(border=True):
-        st.markdown(f"### {t_name} {'🏐 (กำลังเสิร์ฟ)' if m['server'] == 'b' else ''}")
+        st.markdown(f"### {t_name} {'🏐 (เสิร์ฟ)' if m['server'] == 'b' else ''}")
         st.markdown(f"<h1 style='text-align: center; font-size: 80px; margin: 0; color: #ea580c;'>{m['scores'][curr_set]['b']}</h1>", unsafe_allow_html=True)
         
         b1, b2 = st.columns(2)
         with b1:
-            if st.button(f"➕ ได้คะแนน ({t_name})", use_container_width=True, type="primary", key="add_b"):
+            if st.button(f"➕ เพิ่มคะแนน ({t_name})", use_container_width=True, type="primary", key="add_b"):
                 add_score('b')
                 st.rerun()
         with b2:
@@ -513,31 +431,30 @@ with col2:
         b3, b4 = st.columns(2)
         with b3:
             if st.button(f"🔄 หมุนตำแหน่ง ({t_name})", use_container_width=True, key="rot_b_btn"):
-                save_snapshot(f"{t_name} หมุนตำแหน่ง")
                 rotate_team_cw('b')
+                save_snapshot(f"{t_name} หมุนตำแหน่ง (กดเอง)")
                 update_and_sync()
                 st.rerun()
         with b4:
-            if st.button(f"🏐 กำหนดให้เสิร์ฟ ({t_name})", use_container_width=True, key="srv_b"):
-                save_snapshot(f"เปลี่ยนสิทธิ์เสิร์ฟให้ {t_name}")
+            if st.button(f"🏐 ให้สิทธิ์เสิร์ฟ ({t_name})", use_container_width=True, key="srv_b"):
                 m['server'] = 'b'
+                save_snapshot(f"เปลี่ยนสิทธิ์เสิร์ฟให้ {t_name}")
                 update_and_sync()
                 st.rerun()
 
-# ⏱️ ปุ่มขอเวลานอก & สลับฝั่ง
+# ⏱️ ขอเวลานอก & สลับฝั่ง
 st.markdown("<br>", unsafe_allow_html=True)
-st.subheader("⏱️ ปุ่มขอเวลานอก & จัดการสนาม")
 to_col1, to_col2, to_col3, to_col4 = st.columns([2, 2, 2, 2])
 with to_col1:
-    if st.button(f"⏱️ ขอเวลานอก ({m['team_a']})", use_container_width=True, key="to_a_sep"):
+    if st.button(f"⏱️ ขอเวลานอก ({m['team_a']})", use_container_width=True, key="to_a"):
         trigger_timeout('a')
         st.rerun()
 with to_col2:
-    if st.button(f"⏱️ ขอเวลานอก ({m['team_b']})", use_container_width=True, key="to_b_sep"):
+    if st.button(f"⏱️ ขอเวลานอก ({m['team_b']})", use_container_width=True, key="to_b"):
         trigger_timeout('b')
         st.rerun()
 with to_col3:
-    if st.button(f"🔄 สลับฝั่งสนาม (บอร์ดใหญ่)", use_container_width=True):
+    if st.button("🔄 สลับฝั่งสนาม (บอร์ดใหญ่)", use_container_width=True):
         m['swapped_sides'] = not m.get('swapped_sides', False)
         update_and_sync()
         st.rerun()
@@ -546,22 +463,8 @@ with to_col4:
         reset_positions()
         st.rerun()
 
-# ⏱️ แถบแสดงถอยหลังเวลานอกใต้ปุ่ม
-if m.get('timeout_active', False):
-    rem_timeout = int(m['timeout_end_time'] - time.time())
-    if rem_timeout <= 0:
-        m['timeout_active'] = False
-        update_and_sync()
-    else:
-        st.markdown(f"""
-        <div style="background-color: #7f1d1d; border: 2px solid #ef4444; border-radius: 10px; padding: 15px; margin-top: 15px; text-align: center; color: white;">
-            <div style="font-size: 20px; font-weight: bold; color: #f59e0b;">⏱️ กำลังขอเวลานอก: <span style="color: white;">{m['timeout_team_name']}</span></div>
-            <div style="font-size: 48px; font-weight: bold; color: #ef4444; margin-top: 5px;">เวลาเหลือ {rem_timeout:02d} วินาที</div>
-        </div>
-        """, unsafe_allow_html=True)
-
 # =========================================================
-# 🏐 FIELD DISPLAY & SUBSTITUTIONS / LIBERO SWAP
+# 🏐 FIELD DISPLAY
 # =========================================================
 st.markdown("---")
 st.subheader("🏐 ผังตำแหน่งผู้เล่นบนสนาม")
@@ -578,14 +481,12 @@ def render_player_box(pos_num, player_name, is_server=False):
     </div>"""
 
 field_col1, field_col2 = st.columns(2)
-
 court_a = get_current_court('a')
 court_b = get_current_court('b')
 
-# TEAM A FIELD
+# FIELD TEAM A
 with field_col1:
     st.markdown(f"### {m['team_a']} {'🏐' if m['server'] == 'a' else ''}")
-    
     r1_1, r1_2 = st.columns(2)
     with r1_1: st.markdown(render_player_box('5', court_a['5']), unsafe_allow_html=True)
     with r1_2: st.markdown(render_player_box('4', court_a['4']), unsafe_allow_html=True)
@@ -598,44 +499,9 @@ with field_col1:
     with r3_1: st.markdown(render_player_box('1', court_a['1'], is_server=(m['server'] == 'a')), unsafe_allow_html=True)
     with r3_2: st.markdown(render_player_box('2', court_a['2']), unsafe_allow_html=True)
 
-    # 🛡️ สลับตัว Libero แดนหลัง (แสดงเฉพาะเมื่อเปิดใช้ Libero)
-    if m.get('use_libero', True):
-        with st.expander(f"🛡️ สลับตัว Libero ด่วน ({m['team_a']})"):
-            lib_a1, lib_a2 = m['liberos_a'][0], m['liberos_a'][1]
-            l_col1, l_col2 = st.columns(2)
-            with l_col1:
-                if st.button(f"สลับตำแหน่ง 5 เป็น Libero ({lib_a1})", key="lib_a_5", use_container_width=True):
-                    swap_libero('a', 4, lib_a1)
-                    st.rerun()
-                if st.button(f"สลับตำแหน่ง 6 เป็น Libero ({lib_a1})", key="lib_a_6", use_container_width=True):
-                    swap_libero('a', 5, lib_a1)
-                    st.rerun()
-            with l_col2:
-                if st.button(f"สลับตำแหน่ง 5 เป็น Libero ({lib_a2})", key="lib_a_5_2", use_container_width=True):
-                    swap_libero('a', 4, lib_a2)
-                    st.rerun()
-                if st.button(f"สลับตำแหน่ง 6 เป็น Libero ({lib_a2})", key="lib_a_6_2", use_container_width=True):
-                    swap_libero('a', 5, lib_a2)
-                    st.rerun()
-
-    with st.expander(f"🔄 เปลี่ยนตัวผู้เล่นปกติ ({m['team_a']})"):
-        sub_c1, sub_c2, sub_c3 = st.columns([3, 3, 2])
-        with sub_c1:
-            sel_main_a = st.selectbox("ผู้เล่นที่จะออก", options=[f"ลำดับ {i+1}: {p}" for i, p in enumerate(m['players_a_list'])], key="sel_main_a")
-        with sub_c2:
-            sel_bench_a = st.selectbox("ผู้เล่นสำรองที่จะเข้า", options=[f"สำรอง {i+1}: {p}" for i, p in enumerate(m['bench_a'])], key="sel_bench_a")
-        with sub_c3:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("ยืนยันเปลี่ยนตัว", key="btn_sub_act_a", type="primary", use_container_width=True):
-                m_idx = int(sel_main_a.split(":")[0].replace("ลำดับ ", "")) - 1
-                b_idx = int(sel_bench_a.split(":")[0].replace("สำรอง ", "")) - 1
-                substitute_player('a', m_idx, b_idx)
-                st.rerun()
-
-# TEAM B FIELD
+# FIELD TEAM B
 with field_col2:
     st.markdown(f"### {m['team_b']} {'🏐' if m['server'] == 'b' else ''}")
-
     r1_1, r1_2 = st.columns(2)
     with r1_1: st.markdown(render_player_box('5', court_b['5']), unsafe_allow_html=True)
     with r1_2: st.markdown(render_player_box('4', court_b['4']), unsafe_allow_html=True)
@@ -646,137 +512,10 @@ with field_col2:
 
     r3_1, r3_2 = st.columns(2)
     with r3_1: st.markdown(render_player_box('1', court_b['1'], is_server=(m['server'] == 'b')), unsafe_allow_html=True)
-    with r3_2: st.markdown(render_player_box('2', court_b['2']), unsafe_allow_html=True)
+    with r3_2: st.markdown(render_player_box('2', court_a['2']), unsafe_allow_html=True)
 
-    # 🛡️ สลับตัว Libero แดนหลัง (แสดงเฉพาะเมื่อเปิดใช้ Libero)
-    if m.get('use_libero', True):
-        with st.expander(f"🛡️ สลับตัว Libero ด่วน ({m['team_b']})"):
-            lib_b1, lib_b2 = m['liberos_b'][0], m['liberos_b'][1]
-            l_col1, l_col2 = st.columns(2)
-            with l_col1:
-                if st.button(f"สลับตำแหน่ง 5 เป็น Libero ({lib_b1})", key="lib_b_5", use_container_width=True):
-                    swap_libero('b', 4, lib_b1)
-                    st.rerun()
-                if st.button(f"สลับตำแหน่ง 6 เป็น Libero ({lib_b1})", key="lib_b_6", use_container_width=True):
-                    swap_libero('b', 5, lib_b1)
-                    st.rerun()
-            with l_col2:
-                if st.button(f"สลับตำแหน่ง 5 เป็น Libero ({lib_b2})", key="lib_b_5_2", use_container_width=True):
-                    swap_libero('b', 4, lib_b2)
-                    st.rerun()
-                if st.button(f"สลับตำแหน่ง 6 เป็น Libero ({lib_b2})", key="lib_b_6_2", use_container_width=True):
-                    swap_libero('b', 5, lib_b2)
-                    st.rerun()
-
-    with st.expander(f"🔄 เปลี่ยนตัวผู้เล่นปกติ ({m['team_b']})"):
-        sub_c1, sub_c2, sub_c3 = st.columns([3, 3, 2])
-        with sub_c1:
-            sel_main_b = st.selectbox("ผู้เล่นที่จะออก", options=[f"ลำดับ {i+1}: {p}" for i, p in enumerate(m['players_b_list'])], key="sel_main_b")
-        with sub_c2:
-            sel_bench_b = st.selectbox("ผู้เล่นสำรองที่จะเข้า", options=[f"สำรอง {i+1}: {p}" for i, p in enumerate(m['bench_b'])], key="sel_bench_b")
-        with sub_c3:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("ยืนยันเปลี่ยนตัว", key="btn_sub_act_b", type="primary", use_container_width=True):
-                m_idx = int(sel_main_b.split(":")[0].replace("ลำดับ ", "")) - 1
-                b_idx = int(sel_bench_b.split(":")[0].replace("สำรอง ", "")) - 1
-                substitute_player('b', m_idx, b_idx)
-                st.rerun()
-
-# =========================================================
-# 📊 SET HISTORY & MATCH ARCHIVES
-# =========================================================
+# LOGS
 st.markdown("---")
-hist_col1, hist_col2 = st.columns(2)
-
-with hist_col1:
-    st.subheader(f"📊 สรุปผลคู่ปัจจุบัน (คู่ที่ {m['match_no']})")
-    sets_won_a, sets_won_b = calculate_sets_won()
-    
-    for idx in range(3):
-        sa = m['scores'][idx]['a']
-        sb = m['scores'][idx]['b']
-        target = m['target_score_reg'] if idx < 2 else m['target_score_tie']
-        winner = check_set_winner(sa, sb, target)
-        
-        status_str = "กำลังแข่ง" if idx == curr_set else ("จบแล้ว" if winner else "ยังไม่เริ่ม")
-        win_str = f"🏆 {m['team_a'] if winner == 'a' else m['team_b']} ชนะ" if winner else ""
-        
-        st.info(f"**SET {idx+1}** ({status_str}) : **{m['team_a']}** {sa} - {sb} **{m['team_b']}** {win_str}")
-        
-    st.markdown(f"**สรุปผลรวม:** {m['team_a']} **{sets_won_a} - {sets_won_b}** {m['team_b']}")
-
-with hist_col2:
-    st.subheader("📜 ประวัติเหตุการณ์คู่นี้ (Current Match Log)")
-    if m.get('logs'):
-        st.text_area("ลำดับเหตุการณ์ล่าสุด", value="\n".join(m['logs']), height=180, disabled=True)
-    else:
-        st.write("ยังไม่มีประวัติในคู่นี้")
-
-# 📚 ประวัติการแข่งขันรวมทุกคู่
-st.markdown("---")
-st.subheader("📚 ประวัติผลการแข่งขันที่จบแล้ว (กดคลิกเปิดเพื่อดูรายละเอียด/แก้ไขข้อมูล)")
-
-if m.get('archives'):
-    for idx, rec in enumerate(m['archives']):
-        expander_title = f"📁 คู่ที่ {rec['match_no']}: {rec['team_a']} vs {rec['team_b']} (ผล: {rec['sets_a']} - {rec['sets_b']} เซต) - 🏆 {rec['winner']}"
-        
-        with st.expander(expander_title):
-            st.markdown(f"**เวลาบันทึก:** {rec['timestamp']} | **ประเภท:** {rec['gender']} | **รอบ/สาย:** {rec['round_name']} {rec['group_name']}")
-            st.markdown("#### ✏️ แก้ไขข้อมูลการแข่งขันย้อนหลัง")
-            
-            e_col1, e_col2 = st.columns(2)
-            with e_col1:
-                edit_team_a = st.text_input("ชื่อทีม A", value=rec['team_a'], key=f"arc_ta_{idx}")
-                edit_sets_a = st.number_input("เซตที่ทีม A ชนะ", min_value=0, max_value=3, value=rec['sets_a'], key=f"arc_sa_{idx}")
-            with e_col2:
-                edit_team_b = st.text_input("ชื่อทีม B", value=rec['team_b'], key=f"arc_tb_{idx}")
-                edit_sets_b = st.number_input("เซตที่ทีม B ชนะ", min_value=0, max_value=3, value=rec['sets_b'], key=f"arc_sb_{idx}")
-
-            st.markdown("**คะแนนรายเซต:**")
-            sc_c1, sc_c2, sc_c3 = st.columns(3)
-            
-            edited_scores = copy.deepcopy(rec['scores'])
-            with sc_c1:
-                st.markdown("##### เซต 1")
-                edited_scores[0]['a'] = st.number_input("ทีม A (Set 1)", min_value=0, value=rec['scores'][0]['a'], key=f"arc_s1a_{idx}")
-                edited_scores[0]['b'] = st.number_input("ทีม B (Set 1)", min_value=0, value=rec['scores'][0]['b'], key=f"arc_s1b_{idx}")
-            with sc_c2:
-                st.markdown("##### เซต 2")
-                edited_scores[1]['a'] = st.number_input("ทีม A (Set 2)", min_value=0, value=rec['scores'][1]['a'], key=f"arc_s2a_{idx}")
-                edited_scores[1]['b'] = st.number_input("ทีม B (Set 2)", min_value=0, value=rec['scores'][1]['b'], key=f"arc_s2b_{idx}")
-            with sc_c3:
-                st.markdown("##### เซต 3")
-                edited_scores[2]['a'] = st.number_input("ทีม A (Set 3)", min_value=0, value=rec['scores'][2]['a'], key=f"arc_s3a_{idx}")
-                edited_scores[2]['b'] = st.number_input("ทีม B (Set 3)", min_value=0, value=rec['scores'][2]['b'], key=f"arc_s3b_{idx}")
-
-            edit_winner = st.text_input("ผู้ชนะ (Winner Name)", value=rec['winner'], key=f"arc_win_{idx}")
-
-            btn_save_col, btn_del_col = st.columns([2, 1])
-            with btn_save_col:
-                if st.button("💾 บันทึกการแก้ไขคู่นี้", key=f"save_arc_{idx}", type="primary", use_container_width=True):
-                    m['archives'][idx]['team_a'] = edit_team_a
-                    m['archives'][idx]['team_b'] = edit_team_b
-                    m['archives'][idx]['sets_a'] = edit_sets_a
-                    m['archives'][idx]['sets_b'] = edit_sets_b
-                    m['archives'][idx]['scores'] = edited_scores
-                    m['archives'][idx]['winner'] = edit_winner
-                    update_and_sync()
-                    st.success("อัปเดตข้อมูลประวัติการแข่งขันแล้ว!")
-                    st.rerun()
-            with btn_del_col:
-                if st.button("🗑️ ลบประวัติคู่นี้", key=f"del_arc_{idx}", type="secondary", use_container_width=True):
-                    m['archives'].pop(idx)
-                    update_and_sync()
-                    st.warning("ลบประวัติคู่นี้เรียบร้อย")
-                    st.rerun()
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    json_data = json.dumps(m['archives'], ensure_ascii=False, indent=2)
-    st.download_button(
-        label="📥 ดาวน์โหลดประวัติการแข่งขันทั้งหมด (JSON)",
-        data=json_data,
-        file_name="all_matches_archive.json",
-        mime="application/json"
-    )
-else:
-    st.info("ยังไม่มีประวัติการแข่งขันย้อนหลัง")
+st.subheader("📜 ประวัติการได้คะแนน / เหตุการณ์")
+if m.get('logs'):
+    st.text_area("Logs", value="\n".join(m['logs']), height=150, disabled=True)
