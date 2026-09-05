@@ -120,13 +120,13 @@ def calculate_sets_won():
         elif winner == 'b': sets_b += 1
     return sets_a, sets_b
 
-# 🏐 แก้ไขระบบหมุนตำแหน่ง: หมุนตามเข็มนาฬิกา (Index 0 จะกลายเป็นตำแหน่ง 1)
+# 🏐 แก้ไขระบบหมุนตามเข็มนาฬิกาที่ถูกต้อง: 2 -> 1, 1 -> 6, 6 -> 5, 5 -> 4, 4 -> 3, 3 -> 2
 def rotate_team_cw(team_key):
     m = st.session_state.match_data
     target_list = m['players_a_list'] if team_key == 'a' else m['players_b_list']
-    # เลื่อนสมาชิกตัวสุดท้ายมาไว้ข้างหน้า (เพื่อให้คนถัดไปมาอยู่ตำแหน่ง 1 สลับเสิร์ฟ)
-    last_player = target_list.pop()
-    target_list.insert(0, last_player)
+    # เลื่อนคนแรก (ตำแหน่ง 1) ไปไว้ท้ายสุด เพื่อให้คนที่ 2 (ตำแหน่ง 2) ขึ้นมาเป็นตำแหน่ง 1
+    first_player = target_list.pop(0)
+    target_list.append(first_player)
 
 def reset_positions():
     m = st.session_state.match_data
@@ -135,12 +135,12 @@ def reset_positions():
     m['players_b_list'] = [f"ตัวจริง B{i+1}" for i in range(6)]
     update_and_sync()
 
-# 🎯 ปรับปรุงจุดนี้: แมปข้อมูล index [0..5] ตรงกับตำแหน่งวอลเลย์บอล [1..6] โดยตรง
+# 🎯 Mapping ตรงตามตำแหน่ง 1, 2, 3, 4, 5, 6
 def get_current_court(team_key):
     m = st.session_state.match_data
     plist = m['players_a_list'] if team_key == 'a' else m['players_b_list']
     return {
-        '1': plist[0],  # ตำแหน่ง 1 (ผู้เสิร์ฟ)
+        '1': plist[0],  # ตำแหน่ง 1 (คนเสิร์ฟ)
         '2': plist[1],  # ตำแหน่ง 2 (หน้าขวา)
         '3': plist[2],  # ตำแหน่ง 3 (หน้ากลาง)
         '4': plist[3],  # ตำแหน่ง 4 (หน้าซ้าย)
@@ -173,11 +173,12 @@ def add_score(team):
     curr_set = m['current_set']
     team_name = m['team_a'] if team == 'a' else m['team_b']
     
-    # เมื่อเปลี่ยนเสิร์ฟ: เปลี่ยนสิทธิ์เสิร์ฟ + หมุนตำแหน่งทันที
+    # เมื่อเปลี่ยนเสิร์ฟ: เปลี่ยนสิทธิ์เสิร์ฟ + หมุนตำแหน่งตามกติกา
     if m['server'] != team:
         m['server'] = team
         rotate_team_cw(team)
-        save_snapshot(f"{team_name} ได้แต้ม (เปลี่ยนเสิร์ฟ & หมุนตำแหน่ง -> {get_current_court(team)['1']} เสิร์ฟ)")
+        server_name = get_current_court(team)['1']
+        save_snapshot(f"{team_name} ได้แต้ม (เปลี่ยนเสิร์ฟ & หมุนตำแหน่ง -> {server_name} เสิร์ฟ)")
     else:
         save_snapshot(f"{team_name} ได้คะแนน (+1)")
 
