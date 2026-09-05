@@ -171,12 +171,12 @@ def start_new_match():
     
     update_and_sync()
 
-# 🔄 หมุนตำแหน่งตามเข็มนาฬิกาแบบ Direct In-place Modification
+# 🏐 หมุนตำแหน่งตามเข็มนาฬิกาที่ถูกต้อง (1 -> 6 -> 5 -> 4 -> 3 -> 2 -> 1)
 def rotate_team_cw(team_key):
     m = st.session_state.match_data
     target_list = m['players_a_list'] if team_key == 'a' else m['players_b_list']
-    first_player = target_list.pop(0)
-    target_list.append(first_player)
+    last_player = target_list.pop()
+    target_list.insert(0, last_player)
 
 def reset_positions():
     m = st.session_state.match_data
@@ -218,9 +218,10 @@ def add_score(team):
     curr_set = m['current_set']
     team_name = m['team_a'] if team == 'a' else m['team_b']
     
+    # 📌 บันทึก Snapshot ก่อนปรับเปลี่ยนข้อมูล
     save_snapshot(f"{team_name} ได้คะแนน (+1)")
     
-    # 🏐 หมุนตำแหน่งอัตโนมัติหากฝั่งรับได้คะแนน (Side-out)
+    # 🏐 หมุนตำแหน่งอัตโนมัติเฉพาะตอนที่ได้เปลี่ยนเสิร์ฟ (Side-out)
     if m['server'] != team:
         m['server'] = team
         rotate_team_cw(team)
@@ -559,13 +560,13 @@ with field_col1:
     with st.expander(f"🔄 เปลี่ยนตัวผู้เล่น ({m['team_a']})"):
         sub_c1, sub_c2, sub_c3 = st.columns([3, 3, 2])
         with sub_c1:
-            sel_main_a = st.selectbox("ผู้เล่นตัวจริงที่จะออก", options=[f"ลำดับ {i+1}: {p}" for i, p in enumerate(m['players_a_list'])], key="sel_main_a")
+            sel_main_a = st.selectbox("ผู้เล่นตัวจริงที่จะออก", options=[f"ตำแหน่ง {i+1}: {p}" for i, p in enumerate(m['players_a_list'])], key="sel_main_a")
         with sub_c2:
             sel_bench_a = st.selectbox("ผู้เล่นสำรองที่จะเข้า", options=[f"สำรอง {i+1}: {p}" for i, p in enumerate(m['bench_a'])], key="sel_bench_a")
         with sub_c3:
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("ยืนยันเปลี่ยนตัว", key="btn_sub_act_a", type="primary", use_container_width=True):
-                m_idx = int(sel_main_a.split(":")[0].replace("ลำดับ ", "")) - 1
+                m_idx = int(sel_main_a.split(":")[0].replace("ตำแหน่ง ", "")) - 1
                 b_idx = int(sel_bench_a.split(":")[0].replace("สำรอง ", "")) - 1
                 substitute_player('a', m_idx, b_idx)
                 st.rerun()
@@ -589,13 +590,13 @@ with field_col2:
     with st.expander(f"🔄 เปลี่ยนตัวผู้เล่น ({m['team_b']})"):
         sub_c1, sub_c2, sub_c3 = st.columns([3, 3, 2])
         with sub_c1:
-            sel_main_b = st.selectbox("ผู้เล่นตัวจริงที่จะออก", options=[f"ลำดับ {i+1}: {p}" for i, p in enumerate(m['players_b_list'])], key="sel_main_b")
+            sel_main_b = st.selectbox("ผู้เล่นตัวจริงที่จะออก", options=[f"ตำแหน่ง {i+1}: {p}" for i, p in enumerate(m['players_b_list'])], key="sel_main_b")
         with sub_c2:
             sel_bench_b = st.selectbox("ผู้เล่นสำรองที่จะเข้า", options=[f"สำรอง {i+1}: {p}" for i, p in enumerate(m['bench_b'])], key="sel_bench_b")
         with sub_c3:
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("ยืนยันเปลี่ยนตัว", key="btn_sub_act_b", type="primary", use_container_width=True):
-                m_idx = int(sel_main_b.split(":")[0].replace("ลำดับ ", "")) - 1
+                m_idx = int(sel_main_b.split(":")[0].replace("ตำแหน่ง ", "")) - 1
                 b_idx = int(sel_bench_b.split(":")[0].replace("สำรอง ", "")) - 1
                 substitute_player('b', m_idx, b_idx)
                 st.rerun()
