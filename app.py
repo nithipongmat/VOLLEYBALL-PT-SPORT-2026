@@ -51,7 +51,6 @@ DEFAULT_MATCH_DATA = {
     }
 }
 
-# --- SHARED STATE FUNCTIONS ---
 def load_shared_state():
     data = copy.deepcopy(DEFAULT_MATCH_DATA)
     if os.path.exists(STATE_FILE):
@@ -176,7 +175,7 @@ def add_score(team):
     save_snapshot()
     curr_set = st.session_state.match_data['current_set']
     
-    # Side-out: ถ้าเดิมไม่ได้เป็นฝ่ายเสิร์ฟ แล้วแย่งแต้มกลับมาได้ -> หมุนตำแหน่งตามเข็มนาฬิกา
+    # Side-out: ถ้าเดิมไม่ได้เสิร์ฟ แล้วได้แต้ม -> ย้ายสิทธิ์เสิร์ฟ + หมุนตำแหน่งตามเข็มนาฬิกา
     if st.session_state.match_data['server'] != team:
         st.session_state.match_data['server'] = team
         rotate_team_cw(team)
@@ -192,6 +191,12 @@ def add_score(team):
         if new_sets_a < 2 and new_sets_b < 2 and curr_set < 2:
             st.session_state.match_data['current_set'] += 1
             toggle_sides()
+    update_and_sync()
+
+def change_server_only(team):
+    """เปลี่ยนฝ่ายเสิร์ฟโดยไม่เพิ่มคะแนนและไม่หมุนตำแหน่ง (แก้ไขกรณีตัดสินผิด)"""
+    save_snapshot()
+    st.session_state.match_data['server'] = team
     update_and_sync()
 
 # =========================================================
@@ -380,7 +385,7 @@ with start_col4:
         st.rerun()
 
 with start_col5:
-    if st.button("↩️ ย้อนกลับ", type="secondary", use_container_width=True, help="Undo ลบคะแนนล่าสุด"):
+    if st.button("↩️ ย้อนกลับ/ลบคะแนน", type="secondary", use_container_width=True, help="Undo ลบคะแนนย้อนหลังและย้อนคืนตำแหน่งสนามเดิม"):
         undo_last_action()
         st.rerun()
 
@@ -403,9 +408,15 @@ with col1:
     with st.container(border=True):
         st.markdown(f"### {t_name} {'🏐 (เสิร์ฟ)' if m['server'] == t_key else ''}")
         st.markdown(f"<h1 style='text-align: center; font-size: 80px; margin: 0;'>{m['scores'][curr_set][t_key]}</h1>", unsafe_allow_html=True)
-        if st.button(f"➕ ได้คะแนน ({t_name})", use_container_width=True, type="primary", key="add_left"):
-            add_score(t_key)
-            st.rerun()
+        btn_c1, btn_c2 = st.columns(2)
+        with btn_c1:
+            if st.button(f"➕ ได้คะแนน ({t_name})", use_container_width=True, type="primary", key="add_left"):
+                add_score(t_key)
+                st.rerun()
+        with btn_c2:
+            if st.button(f"🏐 ให้เสิร์ฟใหม่ ({t_name})", use_container_width=True, key="re_serve_left", help="แก้สิทธิ์เสิร์ฟโดยไม่เพิ่มคะแนน/ไม่หมุนตำแหน่ง"):
+                change_server_only(t_key)
+                st.rerun()
 
 with col2:
     t_key = right_team
@@ -413,9 +424,15 @@ with col2:
     with st.container(border=True):
         st.markdown(f"### {t_name} {'🏐 (เสิร์ฟ)' if m['server'] == t_key else ''}")
         st.markdown(f"<h1 style='text-align: center; font-size: 80px; margin: 0;'>{m['scores'][curr_set][t_key]}</h1>", unsafe_allow_html=True)
-        if st.button(f"➕ ได้คะแนน ({t_name})", use_container_width=True, type="primary", key="add_right"):
-            add_score(t_key)
-            st.rerun()
+        btn_c1, btn_c2 = st.columns(2)
+        with btn_c1:
+            if st.button(f"➕ ได้คะแนน ({t_name})", use_container_width=True, type="primary", key="add_right"):
+                add_score(t_key)
+                st.rerun()
+        with btn_c2:
+            if st.button(f"🏐 ให้เสิร์ฟใหม่ ({t_name})", use_container_width=True, key="re_serve_right", help="แก้สิทธิ์เสิร์ฟโดยไม่เพิ่มคะแนน/ไม่หมุนตำแหน่ง"):
+                change_server_only(t_key)
+                st.rerun()
 
 # TIME-OUT SECTION
 st.markdown("---")
