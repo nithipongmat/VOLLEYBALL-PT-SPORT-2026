@@ -172,7 +172,6 @@ def start_new_match():
     
     update_and_sync()
 
-# ระบบหมุนตำแหน่งตามโครงสร้างโค้ดที่ 1 (Pos1 -> Pos6 -> Pos5 -> Pos4 -> Pos3 -> Pos2 -> Pos1)
 def rotate_team_cw(team_key):
     m = st.session_state.match_data
     if team_key == 'a':
@@ -180,7 +179,6 @@ def rotate_team_cw(team_key):
     else:
         m['players_b_list'][:] = m['players_b_list'][1:] + m['players_b_list'][:1]
 
-# ดึงตำแหน่งผู้เล่นจาก Index 0-5 เข้า POS 1-6 ตรงๆ
 def get_current_court(team_key):
     m = st.session_state.match_data
     plist = m['players_a_list'] if team_key == 'a' else m['players_b_list']
@@ -195,7 +193,6 @@ def get_current_court(team_key):
     }
     return court
 
-# ฟังก์ชันสลับตัวผู้เล่นตัวจริง - ตัวสำรอง
 def substitute_player(team_key, main_idx, bench_idx):
     m = st.session_state.match_data
     plist = m['players_a_list'] if team_key == 'a' else m['players_b_list']
@@ -257,6 +254,23 @@ def trigger_timeout(team_key):
     update_and_sync()
 
 # =========================================================
+# ⏱️ TIMEOUT OVERLAY FUNCTION (ใช้ร่วมกันทั้ง 2 โหมด)
+# =========================================================
+def render_timeout_overlay():
+    if m.get('timeout_active', False):
+        rem_timeout = int(m['timeout_end_time'] - time.time())
+        if rem_timeout <= 0:
+            m['timeout_active'] = False
+            save_shared_state(m)
+        else:
+            st.markdown(f"""
+            <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(15, 23, 42, 0.98); z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white;">
+                <div style="font-size: 40px; font-weight: bold; color: #f59e0b;">⏱️ ขอเวลานอก (TIME-OUT)</div>
+                <div style="font-size: 50px; font-weight: bold; background: #1e293b; padding: 15px 40px; border-radius: 15px; border: 3px solid #f59e0b; margin: 20px 0;">{m['timeout_team_name']}</div>
+                <div style="font-size: 160px; font-weight: bold; color: #ef4444; line-height: 1;">{rem_timeout:02d}</div>
+            </div>""", unsafe_allow_html=True)
+
+# =========================================================
 # 📺 MODE 1: SCOREBOARD DISPLAY
 # =========================================================
 if is_scoreboard:
@@ -275,18 +289,7 @@ if is_scoreboard:
         left_score, right_score = m['scores'][curr_set]['a'], m['scores'][curr_set]['b']
         left_color, right_color = "#2563eb", "#ea580c"
 
-    if m.get('timeout_active', False):
-        rem_timeout = int(m['timeout_end_time'] - time.time())
-        if rem_timeout <= 0:
-            m['timeout_active'] = False
-            save_shared_state(m)
-        else:
-            st.markdown(f"""
-            <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(15, 23, 42, 0.98); z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white;">
-                <div style="font-size: 40px; font-weight: bold; color: #f59e0b;">⏱️ ขอเวลานอก (TIME-OUT)</div>
-                <div style="font-size: 50px; font-weight: bold; background: #1e293b; padding: 15px 40px; border-radius: 15px; border: 3px solid #f59e0b; margin: 20px 0;">{m['timeout_team_name']}</div>
-                <div style="font-size: 160px; font-weight: bold; color: #ef4444; line-height: 1;">{rem_timeout:02d}</div>
-            </div>""", unsafe_allow_html=True)
+    render_timeout_overlay()
 
     if m['match_started'] and not m.get('match_paused', False):
         elapsed_sec = int(m.get('accumulated_time', 0) + (time.time() - m['start_time']))
@@ -332,6 +335,8 @@ if is_scoreboard:
 # 🎛️ MODE 2: CONTROLLER PANEL
 # =========================================================
 if HAS_AUTOREFRESH: st_autorefresh(interval=1000, key="controller_tick")
+render_timeout_overlay()
+
 st.title(f"🏐 PT SPORT 2026 CONTROLLER (คู่ที่ {m['match_no']})")
 
 # SIDEBAR
@@ -497,7 +502,7 @@ with to_col3:
 # 🏐 FIELD DISPLAY & SUBSTITUTIONS
 # =========================================================
 st.markdown("---")
-st.subheader("🏐 ผังตำแหน่งผู้เล่นบนสนาม (ตำแหน่ง 1 คือจุดเสิร์ฟ)")
+st.subheader("🏐 ผังตำแหน่งผู้เล่นบนสนาม (จัดเรียง 5-4 / 6-3 / 1-2)")
 
 def render_player_box(pos_num, player_name, is_server=False):
     border_color = "#f59e0b" if is_server else "#475569"
@@ -512,19 +517,21 @@ field_col1, field_col2 = st.columns(2)
 court_a = get_current_court('a')
 court_b = get_current_court('b')
 
-# TEAM A FIELD
+# TEAM A FIELD (รูปแบบ 5-4 / 6-3 / 1-2)
 with field_col1:
     st.markdown(f"### {m['team_a']} {'🏐' if m['server'] == 'a' else ''}")
     
-    r1_1, r1_2, r1_3 = st.columns(3)
-    with r1_1: st.markdown(render_player_box('4', court_a['4']), unsafe_allow_html=True)
-    with r1_2: st.markdown(render_player_box('3', court_a['3']), unsafe_allow_html=True)
-    with r1_3: st.markdown(render_player_box('2', court_a['2']), unsafe_allow_html=True)
+    r1_1, r1_2 = st.columns(2)
+    with r1_1: st.markdown(render_player_box('5', court_a['5']), unsafe_allow_html=True)
+    with r1_2: st.markdown(render_player_box('4', court_a['4']), unsafe_allow_html=True)
     
-    r2_1, r2_2, r2_3 = st.columns(3)
-    with r2_1: st.markdown(render_player_box('5', court_a['5']), unsafe_allow_html=True)
-    with r2_2: st.markdown(render_player_box('6', court_a['6']), unsafe_allow_html=True)
-    with r2_3: st.markdown(render_player_box('1', court_a['1'], is_server=(m['server'] == 'a')), unsafe_allow_html=True)
+    r2_1, r2_2 = st.columns(2)
+    with r2_1: st.markdown(render_player_box('6', court_a['6']), unsafe_allow_html=True)
+    with r2_2: st.markdown(render_player_box('3', court_a['3']), unsafe_allow_html=True)
+
+    r3_1, r3_2 = st.columns(2)
+    with r3_1: st.markdown(render_player_box('1', court_a['1'], is_server=(m['server'] == 'a')), unsafe_allow_html=True)
+    with r3_2: st.markdown(render_player_box('2', court_a['2']), unsafe_allow_html=True)
 
     # 🔄 เมนูเปลี่ยนตัวสำรอง ทีม A
     with st.expander(f"🔄 เปลี่ยนตัวผู้เล่นตัวจริง - ตัวสำรอง ({m['team_a']})"):
@@ -541,19 +548,21 @@ with field_col1:
                 substitute_player('a', m_idx, b_idx)
                 st.rerun()
 
-# TEAM B FIELD
+# TEAM B FIELD (รูปแบบ 5-4 / 6-3 / 1-2)
 with field_col2:
     st.markdown(f"### {m['team_b']} {'🏐' if m['server'] == 'b' else ''}")
 
-    r1_1, r1_2, r1_3 = st.columns(3)
-    with r1_1: st.markdown(render_player_box('2', court_b['2']), unsafe_allow_html=True)
-    with r1_2: st.markdown(render_player_box('3', court_b['3']), unsafe_allow_html=True)
-    with r1_3: st.markdown(render_player_box('4', court_b['4']), unsafe_allow_html=True)
+    r1_1, r1_2 = st.columns(2)
+    with r1_1: st.markdown(render_player_box('5', court_b['5']), unsafe_allow_html=True)
+    with r1_2: st.markdown(render_player_box('4', court_b['4']), unsafe_allow_html=True)
     
-    r2_1, r2_2, r2_3 = st.columns(3)
-    with r2_1: st.markdown(render_player_box('1', court_b['1'], is_server=(m['server'] == 'b')), unsafe_allow_html=True)
-    with r2_2: st.markdown(render_player_box('6', court_b['6']), unsafe_allow_html=True)
-    with r2_3: st.markdown(render_player_box('5', court_b['5']), unsafe_allow_html=True)
+    r2_1, r2_2 = st.columns(2)
+    with r2_1: st.markdown(render_player_box('6', court_b['6']), unsafe_allow_html=True)
+    with r2_2: st.markdown(render_player_box('3', court_b['3']), unsafe_allow_html=True)
+
+    r3_1, r3_2 = st.columns(2)
+    with r3_1: st.markdown(render_player_box('1', court_b['1'], is_server=(m['server'] == 'b')), unsafe_allow_html=True)
+    with r3_2: st.markdown(render_player_box('2', court_b['2']), unsafe_allow_html=True)
 
     # 🔄 เมนูเปลี่ยนตัวสำรอง ทีม B
     with st.expander(f"🔄 เปลี่ยนตัวผู้เล่นตัวจริง - ตัวสำรอง ({m['team_b']})"):
