@@ -25,7 +25,6 @@ DEFAULT_MATCH_DATA = {
     'team_b': 'ทีม B',
     'scores': [{'a': 0, 'b': 0}, {'a': 0, 'b': 0}, {'a': 0, 'b': 0}],
     'current_set': 0,
-    'swapped_sides': False,
     'server': 'a',
     'match_started': False,
     'match_paused': False,
@@ -96,7 +95,6 @@ def save_snapshot():
         'scores': copy.deepcopy(m['scores']),
         'current_set': m['current_set'],
         'server': m['server'],
-        'swapped_sides': m['swapped_sides'],
         'players_a_court': copy.deepcopy(m['players_a']['court']),
         'players_b_court': copy.deepcopy(m['players_b']['court'])
     }
@@ -111,7 +109,6 @@ def undo_last_action():
         m['scores'] = last_state['scores']
         m['current_set'] = last_state['current_set']
         m['server'] = last_state['server']
-        m['swapped_sides'] = last_state['swapped_sides']
         m['players_a']['court'] = last_state['players_a_court']
         m['players_b']['court'] = last_state['players_b_court']
         update_and_sync()
@@ -129,23 +126,19 @@ def reset_all_match_scores():
     m['start_time'] = None
     update_and_sync()
 
-# ฟังก์ชันหมุนผู้เล่นตามเข็มนาฬิกา
+# ฟังก์ชันหมุนตำแหน่งตามเข็มนาฬิกา (ปรับให้บังคับอัปเดต Dictionary โดยตรง)
 def rotate_team_cw(team_key):
     c = st.session_state.match_data[f'players_{team_key}']['court']
+    # ตำแหน่ง 2 ไป 1, ตำแหน่ง 1 ไป 6, ตำแหน่ง 6 ไป 5, ตำแหน่ง 5 ไป 4, ตำแหน่ง 4 ไป 3, ตำแหน่ง 3 ไป 2
     new_court = {
-        '1': c['2'],  # คนจากตำแหน่ง 2 ขยับไป 1 (เพื่อเสิร์ฟ)
-        '6': c['1'],  # คนจาก 1 ไป 6
-        '5': c['6'],  # คนจาก 6 ไป 5
-        '4': c['5'],  # คนจาก 5 ไป 4
-        '3': c['4'],  # คนจาก 4 ไป 3
-        '2': c['3']   # คนจาก 3 ไป 2
+        '1': str(c['2']),
+        '6': str(c['1']),
+        '5': str(c['6']),
+        '4': str(c['5']),
+        '3': str(c['4']),
+        '2': str(c['3'])
     }
     st.session_state.match_data[f'players_{team_key}']['court'] = new_court
-
-def reset_team_rotation(team_key):
-    st.session_state.match_data[f'players_{team_key}']['court'] = copy.deepcopy(
-        st.session_state.match_data[f'players_{team_key}'].get('initial_court', st.session_state.match_data[f'players_{team_key}']['court'])
-    )
 
 def check_set_winner(sa, sb, target):
     if (sa >= target or sb >= target) and abs(sa - sb) >= 2:
@@ -172,10 +165,10 @@ def add_score(team):
     save_snapshot()
     curr_set = st.session_state.match_data['current_set']
     
-    # ตรวจสอบการหมุนตำแหน่ง (ถ้าทีมที่ได้แต้ม ไม่ได้เป็นฝ่ายเสิร์ฟอยู่ก่อน = ได้ Side-Out)
+    # ถ้าทีมที่ได้แต้มไม่ได้เป็นฝ่ายเสิร์ฟมาก่อน = แย่งเสิร์ฟคืนได้ (Side-out) -> หมุนตำแหน่งตามเข็มนาฬิกา
     if st.session_state.match_data['server'] != team:
         st.session_state.match_data['server'] = team
-        rotate_team_cw(team)  # สั่งหมุนตำแหน่งตามเข็มนาฬิกาทันที
+        rotate_team_cw(team)
 
     st.session_state.match_data['scores'][curr_set][team] += 1
 
@@ -187,22 +180,17 @@ def add_score(team):
         new_sets_a, new_sets_b = calculate_sets_won()
         if new_sets_a < 2 and new_sets_b < 2 and curr_set < 2:
             st.session_state.match_data['current_set'] += 1
-    update_and_sync()
-
-def change_server_only(team):
-    save_snapshot()
-    st.session_state.match_data['server'] = team
+            
     update_and_sync()
 
 # =========================================================
-# 📺 MODE 1: SCOREBOARD DISPLAY (จอแสดงผลใหญ่)
+# 📺 MODE 1: SCOREBOARD DISPLAY (จอบอร์ด)
 # =========================================================
 if is_scoreboard:
     if HAS_AUTOREFRESH: st_autorefresh(interval=1000, key="scoreboard_tick")
     m = load_shared_state()
     curr_set = m['current_set']
     
-    left_team, right_team = 'a', 'b'
     left_name, right_name = m['team_a'], m['team_b']
 
     if m.get('timeout_active', False):
@@ -258,7 +246,7 @@ if is_scoreboard:
     st.stop()
 
 # =========================================================
-# 🎛️ MODE 2: CONTROLLER PANEL (หน้าจอผู้ควบคุม)
+# 🎛️ MODE 2: CONTROLLER PANEL (หน้าผู้ควบคุม)
 # =========================================================
 if HAS_AUTOREFRESH: st_autorefresh(interval=1000, key="controller_tick")
 m = st.session_state.match_data
@@ -362,7 +350,7 @@ with start_col5:
 
 st.markdown("---")
 
-# SCORE CONTROLS (ฝั่งซ้าย = A / ฝั่งขวา = B ล็อกถาวร)
+# SCORE CONTROLS (ซ้าย = ทีม A / ขวา = ทีม B ล็อกถาวร)
 curr_set = m['current_set']
 
 col1, col2 = st.columns(2)
@@ -375,12 +363,13 @@ with col1:
         st.markdown(f"<h1 style='text-align: center; font-size: 80px; margin: 0; color: #2563eb;'>{m['scores'][curr_set]['a']}</h1>", unsafe_allow_html=True)
         btn_c1, btn_c2 = st.columns(2)
         with btn_c1:
-            if st.button(f"➕ ได้คะแนน ({t_name})", use_container_width=True, type="primary", key="add_a"):
+            if st.button(f"➕ ได้คะแนน ({t_name})", use_container_width=True, type="primary", key="add_a_btn"):
                 add_score('a')
                 st.rerun()
         with btn_c2:
-            if st.button(f"🏐 ให้เสิร์ฟใหม่ ({t_name})", use_container_width=True, key="re_serve_a"):
-                change_server_only('a')
+            if st.button(f"🔄 หมุนตำแหน่ง ({t_name})", use_container_width=True, key="rotate_a_btn"):
+                rotate_team_cw('a')
+                update_and_sync()
                 st.rerun()
 
 # ฝั่งขวา: ทีม B
@@ -391,15 +380,16 @@ with col2:
         st.markdown(f"<h1 style='text-align: center; font-size: 80px; margin: 0; color: #ea580c;'>{m['scores'][curr_set]['b']}</h1>", unsafe_allow_html=True)
         btn_c1, btn_c2 = st.columns(2)
         with btn_c1:
-            if st.button(f"➕ ได้คะแนน ({t_name})", use_container_width=True, type="primary", key="add_b"):
+            if st.button(f"➕ ได้คะแนน ({t_name})", use_container_width=True, type="primary", key="add_b_btn"):
                 add_score('b')
                 st.rerun()
         with btn_c2:
-            if st.button(f"🏐 ให้เสิร์ฟใหม่ ({t_name})", use_container_width=True, key="re_serve_b"):
-                change_server_only('b')
+            if st.button(f"🔄 หมุนตำแหน่ง ({t_name})", use_container_width=True, key="rotate_b_btn"):
+                rotate_team_cw('b')
+                update_and_sync()
                 st.rerun()
 
-# FIELD DISPLAY (จัดวางตามตำแหน่งเลขสีแดงในรูปวาด)
+# FIELD DISPLAY (ดึงข้อมูลผู้เล่นมาวาดใหม่ตรงๆ ทุกครั้งที่ Render)
 st.markdown("---")
 st.subheader("🏐 ผังตำแหน่งผู้เล่นบนสนาม (ตำแหน่ง 1 คือจุดเสิร์ฟ)")
 
@@ -416,7 +406,7 @@ field_col1, field_col2 = st.columns(2)
 # TEAM A FIELD (ฝั่งซ้าย: ตำแหน่ง 1 อยู่ซ้ายล่าง)
 with field_col1:
     st.markdown(f"### {m['team_a']} {'🏐' if m['server'] == 'a' else ''}")
-    ca = m['players_a']['court']
+    ca = st.session_state.match_data['players_a']['court']
     
     r1_1, r1_2 = st.columns(2)
     with r1_1: st.markdown(render_player_box('5', ca['5']), unsafe_allow_html=True)
@@ -430,15 +420,10 @@ with field_col1:
     with r3_1: st.markdown(render_player_box('1', ca['1'], is_server=(m['server'] == 'a')), unsafe_allow_html=True)
     with r3_2: st.markdown(render_player_box('2', ca['2']), unsafe_allow_html=True)
 
-    if st.button("🔄 คืนตำแหน่งเริ่มต้น Team A", use_container_width=True):
-        reset_team_rotation('a')
-        update_and_sync()
-        st.rerun()
-
 # TEAM B FIELD (ฝั่งขวา: ตำแหน่ง 1 อยู่ขวาบน)
 with field_col2:
     st.markdown(f"### {m['team_b']} {'🏐' if m['server'] == 'b' else ''}")
-    cb = m['players_b']['court']
+    cb = st.session_state.match_data['players_b']['court']
 
     r1_1, r1_2 = st.columns(2)
     with r1_1: st.markdown(render_player_box('5', cb['5']), unsafe_allow_html=True)
@@ -451,8 +436,3 @@ with field_col2:
     r3_1, r3_2 = st.columns(2)
     with r3_1: st.markdown(render_player_box('3', cb['3']), unsafe_allow_html=True)
     with r3_2: st.markdown(render_player_box('6', cb['6']), unsafe_allow_html=True)
-
-    if st.button("🔄 คืนตำแหน่งเริ่มต้น Team B", use_container_width=True):
-        reset_team_rotation('b')
-        update_and_sync()
-        st.rerun()
