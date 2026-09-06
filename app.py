@@ -234,6 +234,10 @@ if is_scoreboard:
         left_score, right_score = m['scores'][curr_set]['a'], m['scores'][curr_set]['b']
         left_color, right_color = "#2563eb", "#ea580c"
 
+    # คำนวณเวลานอกที่เหลือของเซตปัจจุบัน
+    left_to_rem = 2 - m[f'timeouts_{left_team}'][curr_set]
+    right_to_rem = 2 - m[f'timeouts_{right_team}'][curr_set]
+
     if m.get('timeout_active', False):
         rem_timeout = int(m['timeout_end_time'] - time.time())
         if rem_timeout <= 0:
@@ -273,6 +277,7 @@ if is_scoreboard:
 
     with sc_left:
         st.markdown(f"<div style='border: 4px solid white; border-radius: 20px; padding: 20px; text-align: center; background-color: #0f172a;'><h1 style='font-size: 160px; margin: 0; color: {left_color}; font-weight: bold;'>{left_score:02d}</h1></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; font-size: 24px; margin-top: 15px; font-weight: bold;'>⏱️ เวลานอกเหลือ: <span style='color: #f59e0b;'>{left_to_rem}</span></div>", unsafe_allow_html=True)
 
     with sc_center:
         st.markdown(f"<div style='border: 2px solid white; border-radius: 10px; padding: 8px; text-align: center; font-size: 26px; font-weight: bold; background-color: #1e293b; margin-bottom: 15px;'><span style='color: {status_color}; font-size: 16px; margin-right: 8px;'>{status_badge}</span> ⏱️ {time_str}</div>", unsafe_allow_html=True)
@@ -284,6 +289,7 @@ if is_scoreboard:
 
     with sc_right:
         st.markdown(f"<div style='border: 4px solid white; border-radius: 20px; padding: 20px; text-align: center; background-color: #0f172a;'><h1 style='font-size: 160px; margin: 0; color: {right_color}; font-weight: bold;'>{right_score:02d}</h1></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align: center; font-size: 24px; margin-top: 15px; font-weight: bold;'>⏱️ เวลานอกเหลือ: <span style='color: #f59e0b;'>{right_to_rem}</span></div>", unsafe_allow_html=True)
 
     st.stop()
 
@@ -325,7 +331,7 @@ with st.sidebar:
         update_and_sync()
         st.success("บันทึกสำเร็จ!")
 
-tab_ctrl, tab_history, tab_archive = st.tabs(["🎮 ควบคุมการแข่ง", "📝 แก้ไขประวัติเซต", "🗄️ คลังประวัติการแข่งขัน"])
+tab_ctrl, tab_archive = st.tabs(["🎮 ควบคุมการแข่ง", "🗄️ คลังประวัติการแข่งขัน"])
 
 # 🟢 TAB 1: ควบคุมการแข่ง
 with tab_ctrl:
@@ -536,7 +542,7 @@ with tab_ctrl:
                     substitute_player('b', int(sel_b_out.split(":")[0])-1, int(sel_b_in.split(":")[0])-1)
                     st.rerun()
 
-    # 🟢 จัดการหลังจบการแข่งขัน (อยู่ล่างสุดของหน้าควบคุม)
+    # 🟢 จัดการหลังจบการแข่งขัน
     st.markdown("---")
     st.subheader("🏁 จัดการหลังจบการแข่งขัน")
     
@@ -573,29 +579,7 @@ with tab_ctrl:
         st.success("บันทึกแมตช์ลงคลังและรีเซตบอร์ดเรียบร้อย!")
         st.rerun()
 
-# 🟢 TAB 2: แก้ไขประวัติเซต
-with tab_history:
-    st.markdown("### 📝 แก้ไขคะแนนแต่ละเซต (Manual Override)")
-    st.info("คุณสามารถแก้ไขตัวเลขคะแนนของเซตที่กำลังแข่ง หรือเซตที่จบไปแล้วได้ที่นี่")
-    
-    for i in range(3):
-        st.markdown(f"**เซตที่ {i+1}**")
-        c1, c2 = st.columns(2)
-        with c1:
-            new_a = st.number_input(f"คะแนน {m['team_a']}", min_value=0, value=m['scores'][i]['a'], key=f"edit_a_{i}")
-        with c2:
-            new_b = st.number_input(f"คะแนน {m['team_b']}", min_value=0, value=m['scores'][i]['b'], key=f"edit_b_{i}")
-        
-        if new_a != m['scores'][i]['a'] or new_b != m['scores'][i]['b']:
-            m['scores'][i]['a'] = new_a
-            m['scores'][i]['b'] = new_b
-            update_and_sync()
-            st.success(f"บันทึกเซตที่ {i+1} เรียบร้อย!")
-    
-    st.markdown("---")
-    st.selectbox("กำหนดเซตปัจจุบันเอง", [1, 2, 3], index=m['current_set'], key="edit_curr_set", on_change=lambda: m.update({'current_set': st.session_state.edit_curr_set - 1}) or update_and_sync())
-
-# 🟢 TAB 3: ประวัติการแข่งขัน (Archive)
+# 🟢 TAB 2: ประวัติการแข่งขัน (Archive)
 with tab_archive:
     st.markdown("### 🗄️ คลังประวัติการแข่งขันที่จบแล้ว")
     
