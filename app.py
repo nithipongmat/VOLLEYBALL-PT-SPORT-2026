@@ -375,6 +375,25 @@ with tab_ctrl:
             st.rerun()
 
     st.markdown("---")
+    
+    # 🚨 แถบเครื่องมือรีเซตฉุกเฉิน
+    reset_col1, reset_col2 = st.columns(2)
+    
+    with reset_col1:
+        if st.button("🔄 รีเซตคะแนนเซตปัจจุบันเป็น 0-0", use_container_width=True):
+            curr_set_idx = m['current_set']
+            save_snapshot(f"รีเซตคะแนนเซตที่ {curr_set_idx + 1}")
+            m['scores'][curr_set_idx]['a'] = 0
+            m['scores'][curr_set_idx]['b'] = 0
+            update_and_sync()
+            st.rerun()
+            
+    with reset_col2:
+        if st.button("🔄 รีเซตตำแหน่งผู้เล่นในสนาม", use_container_width=True):
+            reset_positions()
+            st.rerun()
+
+    st.markdown("---")
 
     # SCORE CONTROLS
     curr_set = m['current_set']
@@ -517,7 +536,7 @@ with tab_ctrl:
                     substitute_player('b', int(sel_b_out.split(":")[0])-1, int(sel_b_in.split(":")[0])-1)
                     st.rerun()
 
-    # 🟢 ย้ายปุ่มจบการแข่งขันมาไว้ล่างสุดของหน้าควบคุม
+    # 🟢 จัดการหลังจบการแข่งขัน (อยู่ล่างสุดของหน้าควบคุม)
     st.markdown("---")
     st.subheader("🏁 จัดการหลังจบการแข่งขัน")
     
