@@ -138,7 +138,7 @@ def rotate_team_cw(team_key):
 
 def reset_positions():
     m = st.session_state.match_data
-    save_snapshot("รีเซ็ตตำแหน่งสนามเป็นค่าเริ่มต้น")
+    save_snapshot("รีเซตตำแหน่งสนามเป็นค่าเริ่มต้น")
     m['players_a_list'] = [f"ตัวจริง A{i+1}" for i in range(6)]
     m['players_b_list'] = [f"ตัวจริง B{i+1}" for i in range(6)]
     m['ui_key'] = m.get('ui_key', 0) + 1
@@ -361,7 +361,7 @@ with tab_ctrl:
                 st.rerun()
 
     with start_col3:
-        if st.button("🔄 รีเซ็ตเวลา", use_container_width=True):
+        if st.button("🔄 รีเซตเวลา", use_container_width=True):
             m['match_started'] = False
             m['match_paused'] = False
             m['accumulated_time'] = 0
@@ -570,7 +570,7 @@ with tab_ctrl:
         m['match_paused'] = False
         m['accumulated_time'] = 0
         update_and_sync()
-        st.success("บันทึกแมตช์ลงคลังและรีเซ็ตบอร์ดเรียบร้อย!")
+        st.success("บันทึกแมตช์ลงคลังและรีเซตบอร์ดเรียบร้อย!")
         st.rerun()
 
 # 🟢 TAB 2: แก้ไขประวัติเซต
@@ -601,18 +601,13 @@ with tab_archive:
     
     if m['match_archives']:
         for idx, arc in enumerate(m['match_archives']):
-            with st.expander(f"คู่ที่ {arc['match_no']}: {arc['team_a']} VS {arc['team_b']} ({arc['round_name']})"):
-                ac1, ac2 = st.columns(2)
+            with st.expander(f"คู่ที่ {arc['match_no']}: {arc['team_a']} VS {arc['team_b']} ({arc['round_name']} - {arc['group_name']})"):
+                st.markdown(f"#### {arc['team_a']} VS {arc['team_b']}")
                 for s_idx in range(3):
-                    with ac1:
-                        new_sa = st.number_input(f"เซต {s_idx+1} ({arc['team_a']})", value=arc['scores'][s_idx]['a'], key=f"arc_{idx}_a_{s_idx}")
-                    with ac2:
-                        new_sb = st.number_input(f"เซต {s_idx+1} ({arc['team_b']})", value=arc['scores'][s_idx]['b'], key=f"arc_{idx}_b_{s_idx}")
-                    
-                    if new_sa != arc['scores'][s_idx]['a'] or new_sb != arc['scores'][s_idx]['b']:
-                        m['match_archives'][idx]['scores'][s_idx]['a'] = new_sa
-                        m['match_archives'][idx]['scores'][s_idx]['b'] = new_sb
-                        update_and_sync()
-                        st.success("บันทึกการแก้ไขประวัติเรียบร้อย")
+                    sa = arc['scores'][s_idx]['a']
+                    sb = arc['scores'][s_idx]['b']
+                    # แสดงเฉพาะเซตที่มีการเล่น (คะแนนไม่เป็น 0-0 พร้อมกัน ยกเว้นเซตแรก)
+                    if sa > 0 or sb > 0 or s_idx == 0:
+                        st.markdown(f"- **เซตที่ {s_idx+1}:** {sa} - {sb}")
     else:
         st.info("ยังไม่มีประวัติการแข่งขันที่จบแล้ว")
