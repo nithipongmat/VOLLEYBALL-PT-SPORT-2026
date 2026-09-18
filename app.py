@@ -43,6 +43,7 @@ DEFAULT_MATCH_DATA = {
     'bench_a': ['สำรอง A1', 'สำรอง A2', 'สำรอง A3', 'สำรอง A4', 'สำรอง A5'],
     'bench_b': ['สำรอง B1', 'สำรอง B2', 'สำรอง B3', 'สำรอง B4', 'สำรอง B5'],
     'match_archives': [],
+    'saved_teams': {},  # เพิ่มฐานข้อมูลเก็บรายชื่อทีม
     'ui_key': 0
 }
 
@@ -56,6 +57,7 @@ def load_shared_state():
                 if 'match_archives' not in data: data['match_archives'] = []
                 if 'timeouts_a' not in data: data['timeouts_a'] = [0, 0, 0]
                 if 'timeouts_b' not in data: data['timeouts_b'] = [0, 0, 0]
+                if 'saved_teams' not in data: data['saved_teams'] = {}
         except Exception:
             pass
     return data
@@ -234,7 +236,6 @@ if is_scoreboard:
         left_score, right_score = m['scores'][curr_set]['a'], m['scores'][curr_set]['b']
         left_color, right_color = "#2563eb", "#ea580c"
 
-    # คำนวณเวลานอกที่เหลือของเซตปัจจุบัน
     left_to_rem = 2 - m[f'timeouts_{left_team}'][curr_set]
     right_to_rem = 2 - m[f'timeouts_{right_team}'][curr_set]
 
@@ -310,26 +311,69 @@ with st.sidebar:
     m['match_no'] = st.text_input("คู่ที่", m['match_no'])
     m['target_score_reg'] = st.number_input("คะแนนเซตปกติ", min_value=1, value=m['target_score_reg'])
     m['target_score_tie'] = st.number_input("คะแนนเซตตัดสิน", min_value=1, value=m['target_score_tie'])
-    m['team_a'] = st.text_input("ชื่อทีม A", m['team_a'])
-    m['team_b'] = st.text_input("ชื่อทีม B", m['team_b'])
     
     st.markdown("---")
+    st.header("📋 จัดการรายชื่อทีม")
     
+    # ดึงข้อมูลทีมจากฐานข้อมูล
+    saved_team_names = ["-- ไม่เลือก --"] + list(m.get('saved_teams', {}).keys())
+    st.write("**📥 ดึงรายชื่อจากฐานข้อมูล:**")
+    load_a_col, load_b_col = st.columns(2)
+    with load_a_col:
+        sel_db_a = st.selectbox("ทีม A", saved_team_names, key="db_sel_a")
+        if sel_db_a != "-- ไม่เลือก --" and st.button("📥 โหลด A"):
+            m['team_a'] = sel_db_a
+            m['players_a_list'] = copy.deepcopy(m['saved_teams'][sel_db_a]['starters'])
+            m['bench_a'] = copy.deepcopy(m['saved_teams'][sel_db_a]['bench'])
+            update_and_sync()
+            st.rerun()
+            
+    with load_b_col:
+        sel_db_b = st.selectbox("ทีม B", saved_team_names, key="db_sel_b")
+        if sel_db_b != "-- ไม่เลือก --" and st.button("📥 โหลด B"):
+            m['team_b'] = sel_db_b
+            m['players_b_list'] = copy.deepcopy(m['saved_teams'][sel_db_b]['starters'])
+            m['bench_b'] = copy.deepcopy(m['saved_teams'][sel_db_b]['bench'])
+            update_and_sync()
+            st.rerun()
+
+    st.write("---")
+    st.write("**📝 แก้ไขและบันทึกทีม:**")
+    
+    # ตั้งค่าผู้เล่นทีม A
+    m['team_a'] = st.text_input("ชื่อทีม A", m['team_a'])
     with st.expander(f"🏃‍♂️ ผู้เล่น {m['team_a']}", expanded=False):
         for idx in range(6):
-            m['players_a_list'][idx] = st.text_input(f"ตำแหน่ง {idx+1}", value=m['players_a_list'][idx], key=f"ma_{idx}_{current_ui_key}")
+            m['players_a_list'][idx] = st.text_input(f"ตำแหน่ง {idx+1} (A)", value=m['players_a_list'][idx], key=f"ma_{idx}_{current_ui_key}")
         for idx in range(len(m['bench_a'])):
-            m['bench_a'][idx] = st.text_input(f"สำรอง {idx+1}", value=m['bench_a'][idx], key=f"ba_{idx}_{current_ui_key}")
+            m['bench_a'][idx] = st.text_input(f"สำรอง {idx+1} (A)", value=m['bench_a'][idx], key=f"ba_{idx}_{current_ui_key}")
+        if st.button(f"💾 บันทึก '{m['team_a']}' ไว้ใช้ภายหลัง", key="save_db_a", use_container_width=True):
+            m['saved_teams'][m['team_a']] = {
+                'starters': copy.deepcopy(m['players_a_list']),
+                'bench': copy.deepcopy(m['bench_a'])
+            }
+            update_and_sync()
+            st.success("บันทึกทีม A เข้าระบบเรียบร้อย!")
 
+    # ตั้งค่าผู้เล่นทีม B
+    m['team_b'] = st.text_input("ชื่อทีม B", m['team_b'])
     with st.expander(f"🏃‍♂️ ผู้เล่น {m['team_b']}", expanded=False):
         for idx in range(6):
-            m['players_b_list'][idx] = st.text_input(f"ตำแหน่ง {idx+1}", value=m['players_b_list'][idx], key=f"mb_{idx}_{current_ui_key}")
+            m['players_b_list'][idx] = st.text_input(f"ตำแหน่ง {idx+1} (B)", value=m['players_b_list'][idx], key=f"mb_{idx}_{current_ui_key}")
         for idx in range(len(m['bench_b'])):
-            m['bench_b'][idx] = st.text_input(f"สำรอง {idx+1}", value=m['bench_b'][idx], key=f"bb_{idx}_{current_ui_key}")
+            m['bench_b'][idx] = st.text_input(f"สำรอง {idx+1} (B)", value=m['bench_b'][idx], key=f"bb_{idx}_{current_ui_key}")
+        if st.button(f"💾 บันทึก '{m['team_b']}' ไว้ใช้ภายหลัง", key="save_db_b", use_container_width=True):
+            m['saved_teams'][m['team_b']] = {
+                'starters': copy.deepcopy(m['players_b_list']),
+                'bench': copy.deepcopy(m['bench_b'])
+            }
+            update_and_sync()
+            st.success("บันทึกทีม B เข้าระบบเรียบร้อย!")
 
-    if st.button("💾 บันทึกการแก้ไข", type="primary", use_container_width=True):
+    st.markdown("---")
+    if st.button("💾 ยืนยันการเปลี่ยนแปลง (ทั้งหมด)", type="primary", use_container_width=True):
         update_and_sync()
-        st.success("บันทึกสำเร็จ!")
+        st.success("อัปเดตข้อมูลการแข่งขันสำเร็จ!")
 
 tab_ctrl, tab_archive = st.tabs(["🎮 ควบคุมการแข่ง", "🗄️ คลังประวัติการแข่งขัน"])
 
@@ -337,7 +381,6 @@ tab_ctrl, tab_archive = st.tabs(["🎮 ควบคุมการแข่ง",
 with tab_ctrl:
     st.markdown(f"### 📌 คู่ที่ {m['match_no']} | **กำลังแข่ง: เซตที่ {m['current_set'] + 1}** (เป้าหมาย {m['target_score_reg'] if m['current_set'] < 2 else m['target_score_tie']} แต้ม)")
 
-    # CONTROLS TIME
     start_col1, start_col2, start_col3, start_col4 = st.columns([2, 1.5, 1.5, 2])
     with start_col1:
         if not m['match_started']:
@@ -382,7 +425,6 @@ with tab_ctrl:
 
     st.markdown("---")
     
-    # 🚨 แถบเครื่องมือรีเซตฉุกเฉิน
     reset_col1, reset_col2 = st.columns(2)
     
     with reset_col1:
@@ -401,7 +443,6 @@ with tab_ctrl:
 
     st.markdown("---")
 
-    # SCORE CONTROLS
     curr_set = m['current_set']
     col1, col2 = st.columns(2)
 
@@ -459,7 +500,6 @@ with tab_ctrl:
                     update_and_sync()
                     st.rerun()
 
-    # ⏱️ ปุ่มขอเวลานอก & จัดการสนาม
     st.markdown("<br>", unsafe_allow_html=True)
     to_col1, to_col2, to_col3 = st.columns([2, 2, 2])
     with to_col1:
@@ -488,7 +528,6 @@ with tab_ctrl:
 
     st.markdown("---")
     
-    # วาดสนามขนาดย่อ
     def render_player_box(pos_num, player_name, is_server=False):
         border_color = "#f59e0b" if is_server else "#475569"
         bg_color = "#1e293b" if not is_server else "#312e81"
@@ -542,7 +581,6 @@ with tab_ctrl:
                     substitute_player('b', int(sel_b_out.split(":")[0])-1, int(sel_b_in.split(":")[0])-1)
                     st.rerun()
 
-    # 🟢 จัดการหลังจบการแข่งขัน
     st.markdown("---")
     st.subheader("🏁 จัดการหลังจบการแข่งขัน")
     
@@ -567,7 +605,6 @@ with tab_ctrl:
         }
         m['match_archives'].insert(0, match_record)
         
-        # Reset data สำหรับคู่ถัดไป
         m['scores'] = [{'a': 0, 'b': 0}, {'a': 0, 'b': 0}, {'a': 0, 'b': 0}]
         m['current_set'] = 0
         m['timeouts_a'] = [0, 0, 0]
@@ -579,7 +616,6 @@ with tab_ctrl:
         st.success("บันทึกแมตช์ลงคลังและรีเซตบอร์ดเรียบร้อย!")
         st.rerun()
 
-# 🟢 TAB 2: ประวัติการแข่งขัน (Archive)
 with tab_archive:
     st.markdown("### 🗄️ คลังประวัติการแข่งขันที่จบแล้ว")
     
@@ -590,7 +626,6 @@ with tab_archive:
                 for s_idx in range(3):
                     sa = arc['scores'][s_idx]['a']
                     sb = arc['scores'][s_idx]['b']
-                    # แสดงเฉพาะเซตที่มีการเล่น (คะแนนไม่เป็น 0-0 พร้อมกัน ยกเว้นเซตแรก)
                     if sa > 0 or sb > 0 or s_idx == 0:
                         st.markdown(f"- **เซตที่ {s_idx+1}:** {sa} - {sb}")
     else:
