@@ -40,10 +40,10 @@ DEFAULT_MATCH_DATA = {
     'logs': [],
     'players_a_list': ['ตัวจริง A1', 'ตัวจริง A2', 'ตัวจริง A3', 'ตัวจริง A4', 'ตัวจริง A5', 'ตัวจริง A6'],
     'players_b_list': ['ตัวจริง B1', 'ตัวจริง B2', 'ตัวจริง B3', 'ตัวจริง B4', 'ตัวจริง B5', 'ตัวจริง B6'],
-    'bench_a': ['สำรอง A1', 'สำรอง A2', 'สำรอง A3', 'สำรอง A4', 'สำรอง A5'],
-    'bench_b': ['สำรอง B1', 'สำรอง B2', 'สำรอง B3', 'สำรอง B4', 'สำรอง B5'],
+    'bench_a': ['สำรอง A1', 'สำรอง A2', 'สำรอง A3', 'สำรอง A4', 'สำรอง A5', 'สำรอง A6', 'สำรอง A7', 'สำรอง A8'],
+    'bench_b': ['สำรอง B1', 'สำรอง B2', 'สำรอง B3', 'สำรอง B4', 'สำรอง B5', 'สำรอง B6', 'สำรอง B7', 'สำรอง B8'],
     'match_archives': [],
-    'saved_teams': {},  # เพิ่มฐานข้อมูลเก็บรายชื่อทีม
+    'saved_teams': {},
     'ui_key': 0
 }
 
@@ -58,6 +58,12 @@ def load_shared_state():
                 if 'timeouts_a' not in data: data['timeouts_a'] = [0, 0, 0]
                 if 'timeouts_b' not in data: data['timeouts_b'] = [0, 0, 0]
                 if 'saved_teams' not in data: data['saved_teams'] = {}
+                
+                # ป้องกันกรณีโหลดไฟล์เก่าที่มีตัวสำรองน้อยกว่า 8 คน
+                while len(data['bench_a']) < 8:
+                    data['bench_a'].append(f"สำรอง A{len(data['bench_a'])+1}")
+                while len(data['bench_b']) < 8:
+                    data['bench_b'].append(f"สำรอง B{len(data['bench_b'])+1}")
         except Exception:
             pass
     return data
@@ -325,6 +331,10 @@ with st.sidebar:
             m['team_a'] = sel_db_a
             m['players_a_list'] = copy.deepcopy(m['saved_teams'][sel_db_a]['starters'])
             m['bench_a'] = copy.deepcopy(m['saved_teams'][sel_db_a]['bench'])
+            
+            # ป้องกันกรณีโหลดทีมจากฐานข้อมูลที่มีสำรองไม่ถึง 8 คน
+            while len(m['bench_a']) < 8: m['bench_a'].append(f"สำรอง A{len(m['bench_a'])+1}")
+            
             update_and_sync()
             st.rerun()
             
@@ -334,6 +344,10 @@ with st.sidebar:
             m['team_b'] = sel_db_b
             m['players_b_list'] = copy.deepcopy(m['saved_teams'][sel_db_b]['starters'])
             m['bench_b'] = copy.deepcopy(m['saved_teams'][sel_db_b]['bench'])
+            
+            # ป้องกันกรณีโหลดทีมจากฐานข้อมูลที่มีสำรองไม่ถึง 8 คน
+            while len(m['bench_b']) < 8: m['bench_b'].append(f"สำรอง B{len(m['bench_b'])+1}")
+            
             update_and_sync()
             st.rerun()
 
